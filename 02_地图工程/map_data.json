@@ -12,7 +12,7 @@
       "h": 185
     },
     "view": "isometric",
-    "count_buildings": 48
+    "count_buildings": 43
   },
   "categories": {
     "gate": "校门",
@@ -792,50 +792,6 @@
   ],
   "buildings": [
     {
-      "id": "COURT-N-1",
-      "name": "北侧篮球场群",
-      "cat": "court",
-      "px": [
-        480,
-        42,
-        52,
-        44
-      ],
-      "floors": 0,
-      "desc": "田径场北侧室外篮球场（多片）。",
-      "grid": [
-        118.05,
-        7.73,
-        16.46,
-        9.51
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 1
-    },
-    {
-      "id": "COURT-N-2",
-      "name": "北侧网球场群",
-      "cat": "court",
-      "px": [
-        480,
-        86,
-        52,
-        40
-      ],
-      "floors": 0,
-      "desc": "田径场北侧室外网球场（多片）。",
-      "grid": [
-        118.05,
-        17.24,
-        16.46,
-        8.64
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 2
-    },
-    {
       "id": "FIELD-NE",
       "name": "东北田径场",
       "cat": "field",
@@ -855,7 +811,7 @@
       ],
       "shape": "ellipse",
       "status": "built",
-      "no": 3
+      "no": 1
     },
     {
       "id": "SVC-NORTH",
@@ -877,7 +833,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 4
+      "no": 2
     },
     {
       "id": "SVC-N1",
@@ -899,7 +855,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 5
+      "no": 3
     },
     {
       "id": "SVC-N3",
@@ -921,7 +877,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 6
+      "no": 4
     },
     {
       "id": "SVC-N2",
@@ -943,7 +899,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 7
+      "no": 5
     },
     {
       "id": "SVC-N4",
@@ -965,7 +921,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 8
+      "no": 6
     },
     {
       "id": "COURT-ENG",
@@ -987,7 +943,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 9
+      "no": 7
     },
     {
       "id": "ENG-TRAIN",
@@ -1009,73 +965,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 10
-    },
-    {
-      "id": "DORM-PG",
-      "name": "研究生宿舍",
-      "cat": "dorm",
-      "px": [
-        138,
-        282,
-        96,
-        46
-      ],
-      "floors": 6,
-      "status": "building",
-      "desc": "西北侧研究生公寓（图中示为在建）。",
-      "grid": [
-        9.8,
-        59.59,
-        30.39,
-        9.94
-      ],
-      "shape": "rect",
-      "no": 11
-    },
-    {
-      "id": "COURT-MID",
-      "name": "中部篮球场",
-      "cat": "court",
-      "px": [
-        250,
-        288,
-        82,
-        60
-      ],
-      "floors": 0,
-      "desc": "研究生宿舍东侧、音乐厅北侧篮球场（黄色块）。",
-      "grid": [
-        45.25,
-        60.88,
-        25.95,
-        12.96
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 12
-    },
-    {
-      "id": "HALL-MUSIC",
-      "name": "音乐厅",
-      "cat": "activity",
-      "px": [
-        252,
-        322,
-        58,
-        68
-      ],
-      "floors": 3,
-      "status": "building",
-      "desc": "研究生宿舍东侧（图中示为在建）。",
-      "grid": [
-        45.88,
-        68.23,
-        18.36,
-        14.69
-      ],
-      "shape": "rect",
-      "no": 13
+      "no": 8
     },
     {
       "id": "DORM-YH2",
@@ -1097,7 +987,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 14
+      "no": 9
     },
     {
       "id": "DORM-YH4",
@@ -1119,7 +1009,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 15
+      "no": 10
     },
     {
       "id": "TEACH-2",
@@ -1141,7 +1031,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 16
+      "no": 11
     },
     {
       "id": "ACT",
@@ -1163,7 +1053,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 17
+      "no": 12
     },
     {
       "id": "DORM-YH1",
@@ -1185,7 +1075,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 18
+      "no": 13
     },
     {
       "id": "DORM-YH3",
@@ -1207,7 +1097,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 19
+      "no": 14
     },
     {
       "id": "SVC-LOGI",
@@ -1229,7 +1119,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 20
+      "no": 15
     },
     {
       "id": "LIB",
@@ -1251,7 +1141,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 21
+      "no": 16
     },
     {
       "id": "GATE-E",
@@ -1273,7 +1163,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 22
+      "no": 17
     },
     {
       "id": "CAN-ZIZHU",
@@ -1295,7 +1185,29 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 23
+      "no": 18
+    },
+    {
+      "id": "GATE-W",
+      "name": "西门",
+      "cat": "gate",
+      "px": [
+        124,
+        448,
+        14,
+        28
+      ],
+      "floors": 1,
+      "desc": "校园西侧出入口，邻后勤服务楼与地面停车场，樱花苑生活片区主要人行入口。",
+      "grid": [
+        5.37,
+        95.46,
+        4.43,
+        6.05
+      ],
+      "shape": "rect",
+      "status": "built",
+      "no": 19
     },
     {
       "id": "TEACH-PUB",
@@ -1317,7 +1229,7 @@
         12.1
       ],
       "shape": "rect",
-      "no": 24
+      "no": 20
     },
     {
       "id": "COL-WENLI",
@@ -1339,7 +1251,7 @@
         13.83
       ],
       "shape": "rect",
-      "no": 25
+      "no": 21
     },
     {
       "id": "DORM-YH6",
@@ -1361,7 +1273,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 26
+      "no": 22
     },
     {
       "id": "DORM-YH5",
@@ -1383,7 +1295,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 27
+      "no": 23
     },
     {
       "id": "PLAZA-HONGDE",
@@ -1405,7 +1317,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 28
+      "no": 24
     },
     {
       "id": "LIUHU-SHUYUAN",
@@ -1427,7 +1339,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 29
+      "no": 25
     },
     {
       "id": "DORM-YL",
@@ -1449,7 +1361,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 30
+      "no": 26
     },
     {
       "id": "LAB-H",
@@ -1471,7 +1383,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 31
+      "no": 27
     },
     {
       "id": "LAB-G",
@@ -1493,7 +1405,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 32
+      "no": 28
     },
     {
       "id": "LAB-TECH",
@@ -1515,7 +1427,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 33
+      "no": 29
     },
     {
       "id": "LAB-F",
@@ -1537,7 +1449,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 34
+      "no": 30
     },
     {
       "id": "DORM-YH7",
@@ -1559,7 +1471,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 35
+      "no": 31
     },
     {
       "id": "LAB-E",
@@ -1581,7 +1493,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 36
+      "no": 32
     },
     {
       "id": "LAB-D",
@@ -1603,29 +1515,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 37
-    },
-    {
-      "id": "PARK-E",
-      "name": "东侧停车场",
-      "cat": "parking",
-      "px": [
-        500,
-        600,
-        56,
-        92
-      ],
-      "floors": 0,
-      "desc": "东南大型地面停车场。",
-      "grid": [
-        124.38,
-        128.3,
-        17.72,
-        19.88
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 38
+      "no": 33
     },
     {
       "id": "LAB-C",
@@ -1647,7 +1537,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 39
+      "no": 34
     },
     {
       "id": "GYM-BASKET",
@@ -1669,7 +1559,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 40
+      "no": 35
     },
     {
       "id": "GYM-TENNIS",
@@ -1691,7 +1581,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 41
+      "no": 36
     },
     {
       "id": "TEACH-1",
@@ -1713,7 +1603,7 @@
         10.8
       ],
       "status": "built",
-      "no": 42
+      "no": 37
     },
     {
       "id": "FIELD-SW",
@@ -1735,7 +1625,7 @@
       ],
       "shape": "ellipse",
       "status": "built",
-      "no": 43
+      "no": 38
     },
     {
       "id": "GYM-SWIM",
@@ -1757,7 +1647,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 44
+      "no": 39
     },
     {
       "id": "GYM-EXTRA",
@@ -1779,7 +1669,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 45
+      "no": 40
     },
     {
       "id": "SVC-SW",
@@ -1801,7 +1691,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 46
+      "no": 41
     },
     {
       "id": "GYM",
@@ -1823,7 +1713,7 @@
       ],
       "shape": "ellipse",
       "status": "built",
-      "no": 47
+      "no": 42
     },
     {
       "id": "GATE-S",
@@ -1845,7 +1735,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 48
+      "no": 43
     }
   ],
   "pois": [
