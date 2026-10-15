@@ -6,8 +6,15 @@ __pycache__/
 02_地图工程/check/debug_*.png
 02_地图工程/check/crop_*.png
 02_地图工程/check/zoom_*.png
+02_地图工程/check/chk_*.png
+02_地图工程/check/ov_*.png
 02_地图工程/check/ortho_overview*.png
 02_地图工程/check/iso_review.png
+
+# 坐标校准过程网格图（官方照片目录只保留真实参考照片 ref_*.jpg）
+01_资料与参考/官方照片/g_*.png
+01_资料与参考/官方照片/grid_*.png
+01_资料与参考/官方照片/zoom_*.png
 
 # OS
 .DS_Store

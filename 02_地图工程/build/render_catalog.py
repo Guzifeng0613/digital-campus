@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """阶段A交付：正交俯视编号图 + 官方图叠加编号图 + 建筑台账CSV。"""
-import os, csv
+import os, csv, math
 from PIL import Image, ImageDraw, ImageFont
 import campus_data as C
 
@@ -48,21 +48,52 @@ def badge(cx,cy,no,col):
     bw=max(30,tw+12); bh=22
     d.rounded_rectangle([cx-bw/2,cy-bh/2,cx+bw/2,cy+bh/2],radius=5,fill=(255,255,255),outline=(40,45,50),width=1)
     d.text((cx-tw/2,cy-9),num,fill=(35,40,45),font=fn)
+def shape_pts(b):
+    """返回建筑在网格空间的真实俯视轮廓（上北下南）。"""
+    sh=b["shape"]; gx,gy,gw,gh=b["grid"]
+    if sh in ("poly","gym") and b.get("gpoly"):
+        return [tuple(p) for p in b["gpoly"]]
+    if sh in ("arc","u"):
+        wingW=max(1.0,gw*0.16); bodyD=max(1.0,gh*0.42)
+        curv=gh*0.30 if sh=="arc" else 0.0
+        ins=wingW*0.55 if sh=="arc" else 0.0
+        gp=[(gx+ins,gy),(gx+ins+wingW,gy),(gx+wingW,gy+gh-bodyD),
+            (gx+gw-wingW,gy+gh-bodyD),(gx+gw-ins-wingW,gy),(gx+gw-ins,gy),
+            (gx+gw,gy+gh)]
+        N=14
+        for i in range(1,N+1):
+            t=1-i/N
+            gp.append((gx+gw*t, gy+gh+curv*math.sin(math.pi*t)))
+        return gp
+    if sh=="wave":
+        return [(gx,gy+gh*0.12),(gx+gw*0.6,gy),(gx+gw,gy+gh*0.30),
+                (gx+gw,gy+gh),(gx+gw*0.16,gy+gh)]
+    return [(gx,gy),(gx+gw,gy),(gx+gw,gy+gh),(gx,gy+gh)]
+def yard_pts(b):
+    sh=b["shape"]; gx,gy,gw,gh=b["grid"]
+    if sh in ("arc","u"):
+        wingW=max(1.0,gw*0.16); bodyD=max(1.0,gh*0.42)
+        ins=wingW*0.55 if sh=="arc" else 0.0
+        return [(gx+ins+wingW,gy+0.5),(gx+gw-ins-wingW,gy+0.5),
+                (gx+gw-wingW,gy+gh-bodyD),(gx+wingW,gy+gh-bodyD)]
+    return None
 for b in recs:
     gx,gy,gw,gh=b["grid"]; col=hex2rgb(C.CATEGORIES[b["cat"]][1])
     x0,y0=g2px(gx,gy); x1,y1=g2px(gx+gw,gy+gh)
     if b["shape"]=="ellipse":
         if b["cat"]=="field":
-            # 田径场：橙色跑道 + 绿色草地
-            d.ellipse([x0,y0,x1,y1],fill=(214,150,70),outline=(50,40,30),width=2)
-            mxx,myy=(x1-x0)*0.10,(y1-y0)*0.10
-            d.ellipse([x0+mxx,y0+myy,x1-mxx,y1-myy],fill=(90,150,72))
+            # 田径场：红色塑胶跑道 + 绿色足球场
+            d.ellipse([x0,y0,x1,y1],fill=(184,82,62),outline=(60,40,30),width=2)
+            mxx,myy=(x1-x0)*0.16,(y1-y0)*0.16
+            d.ellipse([x0+mxx,y0+myy,x1-mxx,y1-myy],fill=(96,156,78))
         else:
             d.ellipse([x0,y0,x1,y1],fill=col,outline=(50,40,30),width=2)
     else:
-        d.rectangle([x0,y0,x1,y1],fill=col,outline=(50,40,30),width=2)
-        if b["status"]=="building":
-            d.line([x0,y1,x1,y0],fill=(255,255,255),width=2)
+        pts=[g2px(x,y) for x,y in shape_pts(b)]
+        d.polygon(pts,fill=col,outline=(50,40,30),width=2)
+        yp=yard_pts(b)
+        if yp:
+            d.polygon([g2px(x,y) for x,y in yp],fill=(120,162,92),outline=(96,138,74))
     badge((x0+x1)/2,(y0+y1)/2,b["no"],col)
 # POI
 for p in C.build_pois():
