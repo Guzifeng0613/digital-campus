@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+
+# 中间核对图（构建过程产物，保留正式交付图）
+02_地图工程/check/debug_*.png
+02_地图工程/check/crop_*.png
+02_地图工程/check/zoom_*.png
+02_地图工程/check/ortho_overview*.png
+02_地图工程/check/iso_review.png
+
+# OS
+.DS_Store
+Thumbs.db
