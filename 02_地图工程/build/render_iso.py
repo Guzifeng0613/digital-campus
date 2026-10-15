@@ -29,10 +29,11 @@ def font(sz):
 
 LANDMARK = {  # 直接标注中文名称的主要地标
     "LIB": "图书馆", "TEACH-1": "第一教学楼", "TEACH-2": "第二教学楼",
-    "GYM": "体育馆", "FIELD-NE": "东北田径场", "FIELD-SW": "西南田径场",
-    "CAN-ZIZHU": "紫竹餐厅", "DORM-YL": "玉兰苑", "GATE-S": "南门(正门)",
-    "GATE-E": "东门", "ENG-TRAIN": "工程训练中心", "COL-WENLI": "文理楼",
-    "ACT": "大学生活动中心", "DORM-YH2": "樱花苑",
+    "MUSEUM-HISTORY": "校史馆", "ACT": "大学生活动中心",
+    "GYM": "体育馆", "FIELD-SW": "操场",
+    "CAN-ZIZHU": "紫竹餐厅", "SVC-LOGI": "后勤服务楼",
+    "ENG-TRAIN": "泰瑞楼", "GATE-S": "南门(正门)", "GATE-E": "东门",
+    "GATE-W": "西门",
 }
 
 def iso(gx, gy): return ((gx-gy)*TW/2.0, (gx+gy)*TH/2.0)
@@ -111,14 +112,29 @@ def render():
                            T(cx+rx*0.82,cy+ry*0.82)[0],T(cx+rx*0.82,cy+ry*0.82)[1]],fill=(90,150,72))
             else:
                 d.ellipse([x0,y0,x1,y1],fill=hex2rgb(C.CATEGORIES[b["cat"]][1]),outline=(80,80,80),width=2)
-            continue
-        base=box_corners(gx,gy,gw,gh)
-        col=hex2rgb(C.CATEGORIES[b["cat"]][1])
-        d.polygon([T(*p) for p in base], fill=col, outline=shade(col,0.7))
-        if b["cat"]=="court":
-            for i in range(1,4):
-                t=i/4; a=iso(gx+gw*t,gy); bb=iso(gx+gw*t,gy+gh)
-                d.line([T(*a),T(*bb)],fill=(255,255,255),width=1)
+            cxs,cys=cx+OX,cy+OY
+        else:
+            base=box_corners(gx,gy,gw,gh)
+            col=hex2rgb(C.CATEGORIES[b["cat"]][1])
+            d.polygon([T(*p) for p in base], fill=col, outline=shade(col,0.7))
+            if b["cat"]=="court":
+                for i in range(1,4):
+                    t=i/4; a=iso(gx+gw*t,gy); bb=iso(gx+gw*t,gy+gh)
+                    d.line([T(*a),T(*bb)],fill=(255,255,255),width=1)
+            cxs=sum(p[0]+OX for p in base)/4; cys=sum(p[1]+OY for p in base)/4
+        # 编号徽章
+        num="%02d"%b["no"]; fn=font(15)
+        tw=d.textlength(num,font=fn); bh=22
+        bw=max(30,tw+14)
+        d.rounded_rectangle([cxs-bw/2,cys-bh/2,cxs+bw/2,cys+bh/2],radius=6,
+                            fill=(255,255,255,238),outline=(50,55,60),width=2)
+        d.text((cxs-tw/2,cys-10),num,fill=(40,45,55),font=fn)
+        if b["id"] in LANDMARK:
+            nm=LANDMARK[b["id"]]; f2=font(16)
+            tw2=d.textlength(nm,font=f2)
+            d.rounded_rectangle([cxs-tw2/2-6,cys+bh/2+2,cxs+tw2/2+6,cys+bh/2+24],
+                                radius=4,fill=(30,40,50,180))
+            d.text((cxs-tw2/2,cys+bh/2+4),nm,fill=(255,255,255),font=f2)
 
     # 建筑（立体）
     def depth(b):

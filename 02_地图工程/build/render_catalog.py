@@ -52,7 +52,13 @@ for b in recs:
     gx,gy,gw,gh=b["grid"]; col=hex2rgb(C.CATEGORIES[b["cat"]][1])
     x0,y0=g2px(gx,gy); x1,y1=g2px(gx+gw,gy+gh)
     if b["shape"]=="ellipse":
-        d.ellipse([x0,y0,x1,y1],fill=col,outline=(50,40,30),width=2)
+        if b["cat"]=="field":
+            # 田径场：橙色跑道 + 绿色草地
+            d.ellipse([x0,y0,x1,y1],fill=(214,150,70),outline=(50,40,30),width=2)
+            mxx,myy=(x1-x0)*0.10,(y1-y0)*0.10
+            d.ellipse([x0+mxx,y0+myy,x1-mxx,y1-myy],fill=(90,150,72))
+        else:
+            d.ellipse([x0,y0,x1,y1],fill=col,outline=(50,40,30),width=2)
     else:
         d.rectangle([x0,y0,x1,y1],fill=col,outline=(50,40,30),width=2)
         if b["status"]=="building":
@@ -65,7 +71,10 @@ d.text((20,18),"BUCT 昌平校区 · 正交俯视编号图（上北下南，用�
 # 图例
 lx,ly=20,H-400
 d.text((lx,ly-26),"图例",fill=(20,20,20),font=font(20))
-for i,(k,(zh,hex_)) in enumerate(C.CATEGORIES.items()):
+# 图例（仅显示当前数据实际使用的类别）
+used=set(b["cat"] for b in recs) | set(n["cat"] for n in C.build_nature())
+legend_items=[(k,v) for k,v in C.CATEGORIES.items() if k in used]
+for i,(k,(zh,hex_)) in enumerate(legend_items):
     yy=ly+i*22; d.rectangle([lx,yy,lx+20,yy+17],fill=hex2rgb(hex_),outline=(50,50,50)); d.text((lx+26,yy+1),zh,fill=(20,20,20),font=font(16))
 img.save(os.path.join(OUT,"ortho_numbered.png"))
 im=img.copy(); im.thumbnail((1500,1900)); im.save(os.path.join(OUT,"ortho_numbered_small.png"))
@@ -85,7 +94,8 @@ for b in recs:
     gx,gy,gw,gh=b["grid"]; col=hex2rgb(C.CATEGORIES[b["cat"]][1])
     x0,y0=g2ref(gx,gy); x1,y1=g2ref(gx+gw,gy+gh)
     if b["shape"]=="ellipse":
-        od.ellipse([x0,y0,x1,y1],fill=col+(70,),outline=(255,0,0,255),width=2)
+        fillcol=(214,150,70) if b["cat"]=="field" else col
+        od.ellipse([x0,y0,x1,y1],fill=fillcol+(70,),outline=(255,0,0,255),width=2)
     else:
         od.rectangle([x0,y0,x1,y1],fill=col+(70,),outline=(255,0,0,255),width=2)
     num="%02d"%b["no"]; cx,cy=(x0+x1)/2,(y0+y1)/2

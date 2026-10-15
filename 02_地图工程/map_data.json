@@ -12,7 +12,7 @@
       "h": 185
     },
     "view": "isometric",
-    "count_buildings": 43
+    "count_buildings": 20
   },
   "categories": {
     "gate": "校门",
@@ -20,6 +20,7 @@
     "library": "图书馆",
     "lab": "实验/科研楼",
     "college": "学院楼",
+    "museum": "校史馆/展馆",
     "activity": "活动/报告厅",
     "dorm": "学生公寓",
     "canteen": "食堂",
@@ -39,6 +40,7 @@
     "library": "#A93226",
     "lab": "#B9772B",
     "college": "#B35035",
+    "museum": "#9E4A30",
     "activity": "#D35400",
     "dorm": "#7D6B91",
     "canteen": "#CB4335",
@@ -792,162 +794,8 @@
   ],
   "buildings": [
     {
-      "id": "FIELD-NE",
-      "name": "东北田径场",
-      "cat": "field",
-      "ellipse": [
-        508,
-        185,
-        46,
-        62
-      ],
-      "floors": 0,
-      "desc": "标准足球场+环形跑道+看台，位于校园东北角。",
-      "grid": [
-        112.35,
-        25.23,
-        29.12,
-        26.79
-      ],
-      "shape": "ellipse",
-      "status": "built",
-      "no": 1
-    },
-    {
-      "id": "SVC-NORTH",
-      "name": "北区综合服务楼",
-      "cat": "service",
-      "px": [
-        268,
-        158,
-        58,
-        82
-      ],
-      "floors": 5,
-      "desc": "北部中轴西侧综合服务楼（名称待核对，含停车场）。",
-      "grid": [
-        50.94,
-        32.79,
-        18.36,
-        17.72
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 2
-    },
-    {
-      "id": "SVC-N1",
-      "name": "北区服务楼A",
-      "cat": "service",
-      "px": [
-        132,
-        168,
-        62,
-        20
-      ],
-      "floors": 3,
-      "desc": "西北侧服务/配套楼（名称待核对，邻菜鸟驿站）。",
-      "grid": [
-        7.9,
-        34.95,
-        19.62,
-        4.32
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 3
-    },
-    {
-      "id": "SVC-N3",
-      "name": "北区服务楼C",
-      "cat": "service",
-      "px": [
-        196,
-        168,
-        48,
-        20
-      ],
-      "floors": 3,
-      "desc": "西北侧服务/配套楼（名称待核对）。",
-      "grid": [
-        28.16,
-        34.95,
-        15.19,
-        4.32
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 4
-    },
-    {
-      "id": "SVC-N2",
-      "name": "北区服务楼B",
-      "cat": "service",
-      "px": [
-        132,
-        200,
-        62,
-        20
-      ],
-      "floors": 3,
-      "desc": "西北侧服务/配套楼（名称待核对）。",
-      "grid": [
-        7.9,
-        41.87,
-        19.62,
-        4.32
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 5
-    },
-    {
-      "id": "SVC-N4",
-      "name": "北区服务楼D",
-      "cat": "service",
-      "px": [
-        196,
-        200,
-        54,
-        20
-      ],
-      "floors": 3,
-      "desc": "西北侧服务/配套楼（名称待核对）。",
-      "grid": [
-        28.16,
-        41.87,
-        17.09,
-        4.32
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 6
-    },
-    {
-      "id": "COURT-ENG",
-      "name": "工程训练中心球场",
-      "cat": "court",
-      "px": [
-        425,
-        218,
-        82,
-        52
-      ],
-      "floors": 0,
-      "desc": "工程训练中心西侧篮球场/网球场（黄色块）。",
-      "grid": [
-        100.64,
-        45.76,
-        25.95,
-        11.24
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 7
-    },
-    {
       "id": "ENG-TRAIN",
-      "name": "工程训练中心",
+      "name": "泰瑞楼（工程训练中心）",
       "cat": "service",
       "px": [
         402,
@@ -956,7 +804,7 @@
         60
       ],
       "floors": 4,
-      "desc": "东北侧工程训练中心，含工程实践教学场地与配套停车场。",
+      "desc": "东北侧工程训练中心『泰瑞楼』（泰瑞机器冠名捐赠），工程实践教学场地。",
       "grid": [
         93.36,
         56.13,
@@ -965,51 +813,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 8
-    },
-    {
-      "id": "DORM-YH2",
-      "name": "樱花苑2号楼",
-      "cat": "dorm",
-      "px": [
-        138,
-        328,
-        46,
-        60
-      ],
-      "floors": 7,
-      "desc": "本科四人间，上床下桌、空调、独立卫浴；内设烛光超市。",
-      "grid": [
-        9.8,
-        69.53,
-        14.56,
-        12.96
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 9
-    },
-    {
-      "id": "DORM-YH4",
-      "name": "樱花苑4号楼",
-      "cat": "dorm",
-      "px": [
-        186,
-        328,
-        46,
-        60
-      ],
-      "floors": 7,
-      "desc": "本科四人间，楼下设水果超市。",
-      "grid": [
-        24.99,
-        69.53,
-        14.56,
-        12.96
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 10
+      "no": 1
     },
     {
       "id": "TEACH-2",
@@ -1031,7 +835,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 11
+      "no": 2
     },
     {
       "id": "ACT",
@@ -1044,7 +848,7 @@
         52
       ],
       "floors": 3,
-      "desc": "柳湖西北异形建筑，学生社团与活动场所。",
+      "desc": "柳湖西北异形建筑，学生社团与活动场所，与校史馆相邻。",
       "grid": [
         38.28,
         82.92,
@@ -1053,51 +857,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 12
-    },
-    {
-      "id": "DORM-YH1",
-      "name": "樱花苑1号楼",
-      "cat": "dorm",
-      "px": [
-        138,
-        398,
-        46,
-        64
-      ],
-      "floors": 7,
-      "desc": "本科四人间，设烛光超市。",
-      "grid": [
-        9.8,
-        84.65,
-        14.56,
-        13.83
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 13
-    },
-    {
-      "id": "DORM-YH3",
-      "name": "樱花苑3号楼",
-      "cat": "dorm",
-      "px": [
-        186,
-        398,
-        46,
-        64
-      ],
-      "floors": 7,
-      "desc": "本科四人间，北侧即紫竹餐厅。",
-      "grid": [
-        24.99,
-        84.65,
-        14.56,
-        13.83
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 14
+      "no": 3
     },
     {
       "id": "SVC-LOGI",
@@ -1119,7 +879,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 15
+      "no": 4
     },
     {
       "id": "LIB",
@@ -1141,7 +901,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 16
+      "no": 5
     },
     {
       "id": "GATE-E",
@@ -1163,11 +923,33 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 17
+      "no": 6
+    },
+    {
+      "id": "MUSEUM-HISTORY",
+      "name": "校史馆",
+      "cat": "museum",
+      "ellipse": [
+        256,
+        465,
+        23,
+        22
+      ],
+      "floors": 3,
+      "shape": "ellipse",
+      "status": "built",
+      "desc": "柳湖沿畔圆形红棕展馆（2025年11月竣工，约2700㎡），与大学生活动中心相邻、临柳湖；校史陈列、研究与展览的校园文化空间。",
+      "grid": [
+        39.87,
+        94.38,
+        14.56,
+        9.51
+      ],
+      "no": 7
     },
     {
       "id": "CAN-ZIZHU",
-      "name": "紫竹餐厅",
+      "name": "紫竹餐厅（食堂）",
       "cat": "canteen",
       "px": [
         178,
@@ -1185,7 +967,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 18
+      "no": 8
     },
     {
       "id": "GATE-W",
@@ -1207,161 +989,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 19
-    },
-    {
-      "id": "TEACH-PUB",
-      "name": "公共教学楼（报告厅）",
-      "cat": "teaching",
-      "px": [
-        288,
-        450,
-        46,
-        56
-      ],
-      "floors": 4,
-      "status": "building",
-      "desc": "柳湖西岸公共教学楼，含报告厅（图中示为在建）。",
-      "grid": [
-        57.28,
-        95.89,
-        14.56,
-        12.1
-      ],
-      "shape": "rect",
-      "no": 20
-    },
-    {
-      "id": "COL-WENLI",
-      "name": "文理楼",
-      "cat": "college",
-      "px": [
-        412,
-        452,
-        64,
-        64
-      ],
-      "floors": 4,
-      "status": "building",
-      "desc": "2023年建成，经管/数理/文法/马院教学科研楼，约2万㎡（图中示为在建）。",
-      "grid": [
-        96.52,
-        96.32,
-        20.26,
-        13.83
-      ],
-      "shape": "rect",
-      "no": 21
-    },
-    {
-      "id": "DORM-YH6",
-      "name": "樱花苑6号楼",
-      "cat": "dorm",
-      "px": [
-        132,
-        500,
-        52,
-        60
-      ],
-      "floors": 7,
-      "desc": "本科四人间（编号位置以官方图为准，待核对）。",
-      "grid": [
-        7.9,
-        106.69,
-        16.46,
-        12.96
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 22
-    },
-    {
-      "id": "DORM-YH5",
-      "name": "樱花苑5号楼",
-      "cat": "dorm",
-      "px": [
-        184,
-        500,
-        50,
-        60
-      ],
-      "floors": 7,
-      "desc": "本科四人间，内设1958咖啡厅。",
-      "grid": [
-        24.36,
-        106.69,
-        15.83,
-        12.96
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 23
-    },
-    {
-      "id": "PLAZA-HONGDE",
-      "name": "宏德广场",
-      "cat": "plaza",
-      "px": [
-        318,
-        500,
-        50,
-        38
-      ],
-      "floors": 0,
-      "desc": "图书馆西南、柳湖东侧礼仪广场。",
-      "grid": [
-        66.77,
-        106.69,
-        15.83,
-        8.21
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 24
-    },
-    {
-      "id": "LIUHU-SHUYUAN",
-      "name": "柳湖书院",
-      "cat": "activity",
-      "px": [
-        258,
-        506,
-        52,
-        34
-      ],
-      "floors": 2,
-      "desc": "柳湖西南侧小型书院/文化空间。",
-      "grid": [
-        47.78,
-        107.99,
-        16.46,
-        7.35
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 25
-    },
-    {
-      "id": "DORM-YL",
-      "name": "玉兰苑1-2号楼",
-      "cat": "dorm",
-      "px": [
-        250,
-        520,
-        64,
-        96
-      ],
-      "floors": 6,
-      "desc": "学生公寓（1/2号楼），含超市配套。",
-      "grid": [
-        45.25,
-        111.02,
-        20.26,
-        20.74
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 26
+      "no": 9
     },
     {
       "id": "LAB-H",
@@ -1383,7 +1011,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 27
+      "no": 10
     },
     {
       "id": "LAB-G",
@@ -1405,7 +1033,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 28
+      "no": 11
     },
     {
       "id": "LAB-TECH",
@@ -1427,7 +1055,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 29
+      "no": 12
     },
     {
       "id": "LAB-F",
@@ -1449,29 +1077,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 30
-    },
-    {
-      "id": "DORM-YH7",
-      "name": "樱花苑7号楼",
-      "cat": "dorm",
-      "px": [
-        132,
-        566,
-        100,
-        52
-      ],
-      "floors": 7,
-      "desc": "本科四人间，设烛光超市。",
-      "grid": [
-        7.9,
-        120.95,
-        31.65,
-        11.24
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 31
+      "no": 13
     },
     {
       "id": "LAB-E",
@@ -1493,7 +1099,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 32
+      "no": 14
     },
     {
       "id": "LAB-D",
@@ -1515,7 +1121,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 33
+      "no": 15
     },
     {
       "id": "LAB-C",
@@ -1537,51 +1143,7 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 34
-    },
-    {
-      "id": "GYM-BASKET",
-      "name": "篮球馆",
-      "cat": "gym",
-      "px": [
-        232,
-        624,
-        28,
-        44
-      ],
-      "floors": 2,
-      "desc": "西南田径场东侧室内球类馆。",
-      "grid": [
-        39.55,
-        133.49,
-        8.86,
-        9.51
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 35
-    },
-    {
-      "id": "GYM-TENNIS",
-      "name": "网球馆",
-      "cat": "gym",
-      "px": [
-        262,
-        624,
-        30,
-        44
-      ],
-      "floors": 2,
-      "desc": "西南田径场东侧室内网球馆（名称待核对）。",
-      "grid": [
-        49.05,
-        133.49,
-        9.5,
-        9.51
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 36
+      "no": 16
     },
     {
       "id": "TEACH-1",
@@ -1603,11 +1165,11 @@
         10.8
       ],
       "status": "built",
-      "no": 37
+      "no": 17
     },
     {
       "id": "FIELD-SW",
-      "name": "西南田径场（风雨操场）",
+      "name": "操场（西南田径场）",
       "cat": "field",
       "ellipse": [
         188,
@@ -1616,82 +1178,16 @@
         72
       ],
       "floors": 0,
-      "desc": "樱花苑南侧，标准足球场+环形跑道。",
+      "shape": "ellipse",
+      "desc": "樱花苑南侧、体育馆西侧，标准足球场+环形跑道（风雨操场）。",
       "grid": [
         7.27,
         138.24,
         36.72,
         31.12
       ],
-      "shape": "ellipse",
       "status": "built",
-      "no": 38
-    },
-    {
-      "id": "GYM-SWIM",
-      "name": "游泳馆",
-      "cat": "gym",
-      "px": [
-        232,
-        668,
-        28,
-        44
-      ],
-      "floors": 2,
-      "desc": "西南田径场东侧室内游泳馆（名称待核对）。",
-      "grid": [
-        39.55,
-        142.99,
-        8.86,
-        9.51
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 39
-    },
-    {
-      "id": "GYM-EXTRA",
-      "name": "球类训练馆",
-      "cat": "gym",
-      "px": [
-        262,
-        668,
-        30,
-        52
-      ],
-      "floors": 2,
-      "desc": "西南田径场东侧排球/训练馆（名称待核对）。",
-      "grid": [
-        49.05,
-        142.99,
-        9.5,
-        11.24
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 40
-    },
-    {
-      "id": "SVC-SW",
-      "name": "西南附属用房",
-      "cat": "service",
-      "px": [
-        244,
-        688,
-        46,
-        30
-      ],
-      "floors": 2,
-      "desc": "田径场东南、南湖西侧附属设备用房（名称待核对）。",
-      "grid": [
-        43.35,
-        147.32,
-        14.56,
-        6.48
-      ],
-      "shape": "rect",
-      "status": "built",
-      "no": 41
+      "no": 18
     },
     {
       "id": "GYM",
@@ -1704,6 +1200,7 @@
         40
       ],
       "floors": 3,
+      "shape": "ellipse",
       "desc": "椭圆船形综合体育馆，含篮球/羽毛球/网球/乒乓球等14个训练馆。",
       "grid": [
         45.88,
@@ -1711,9 +1208,8 @@
         29.12,
         17.29
       ],
-      "shape": "ellipse",
       "status": "built",
-      "no": 42
+      "no": 19
     },
     {
       "id": "GATE-S",
@@ -1735,37 +1231,10 @@
       ],
       "shape": "rect",
       "status": "built",
-      "no": 43
+      "no": 20
     }
   ],
   "pois": [
-    {
-      "id": "POI-CAINIAO",
-      "name": "菜鸟驿站",
-      "type": "express",
-      "grid": [
-        10.43,
-        37.55
-      ]
-    },
-    {
-      "id": "POI-MARKET",
-      "name": "烛光超市",
-      "type": "market",
-      "grid": [
-        29.42,
-        107.77
-      ]
-    },
-    {
-      "id": "POI-COFFEE",
-      "name": "1958咖啡厅",
-      "type": "coffee",
-      "grid": [
-        31.0,
-        115.34
-      ]
-    },
     {
       "id": "POI-ATM",
       "name": "ATM",
