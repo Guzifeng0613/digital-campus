@@ -10,18 +10,21 @@
 
 # ---------- 网格与映射 ----------
 TILE_W, TILE_H = 64, 32          # 等距瓦片像素（逻辑）
-GW, GH = 150, 185               # 工作网格尺寸（东西 x 南北）
-# 官方图像素 -> 网格（校园主体范围）
+GW, GH = 150, 264               # 工作网格尺寸（东西 x 南北）
+# 官方图像素 -> 网格（校园主体范围）。等距瓦片物理为正方形，
+# 故东西/南北采用同一“格/像素”尺度，避免南北被压缩、椭圆变扁。
 PX_X0, PX_X1 = 126.0, 562.0     # 西 -> 东
 PX_Y0, PX_Y1 = 34.0, 830.0      # 北 -> 南
-GX0, GX1 = 6.0, 144.0           # 网格西->东
-GY0, GY1 = 6.0, 178.0           # 网格北->南
+GX0, GX1 = 6.0, 144.0           # 网格西->东（东西跨度锚定）
+GY0 = 6.0
+_SCALE = (GX1 - GX0) / (PX_X1 - PX_X0)   # 统一 格/像素
+GY1 = round(GY0 + (PX_Y1 - PX_Y0) * _SCALE, 1)  # 南边界（随统一尺度派生）
 
 def px2gx(x):
-    return (x - PX_X0) / (PX_X1 - PX_X0) * (GX1 - GX0) + GX0
+    return (x - PX_X0) * _SCALE + GX0
 
 def px2gy(y):
-    return (y - PX_Y0) / (PX_Y1 - PX_Y0) * (GY1 - GY0) + GY0
+    return (y - PX_Y0) * _SCALE + GY0
 
 def box(px):
     """像素 bbox=(x,y,w,h) -> 网格 (gx,gy,gw,gh)，gx,gy 为西北角。"""
