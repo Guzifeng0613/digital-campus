@@ -43,7 +43,7 @@ STYLE = {
     "WENLI":          dict(kind="polyblock", wall=(112,142,168),floors=5),   # 文科楼（在建，官方图蓝）
     "ACT":            dict(kind="wave",   wall=(226,224,216),floors=3),
     "CAN-YULAN":      dict(kind="polyblock", wall=(138,158,176),floors=3),   # 玉兰食堂（在建，蓝）
-    "GYM":            dict(kind="capsule",wall=(150,158,168),floors=3),
+    "GYM":            dict(kind="gymbox",wall=(156,66,50),floors=4),
     "FIELD-N":        dict(kind="field"),
     "FIELD-W":        dict(kind="field"),
     "CAN-ZIZHU":      dict(kind="polyblock", wall=(182,84,62),  floors=3),
@@ -130,100 +130,72 @@ def render():
             cxx=sum(p[0] for p in pts)/len(pts); cyy=sum(p[1] for p in pts)/len(pts)
             d.arc([cxx-26,cyy-10,cxx+26,cyy+18],200,330,fill=add(col,40),width=2)
         elif n["cat"]=="mountain":
-            # 南坡斜面 + 平整台顶（脊线凸包填平 M 凹口）+ 西/东两个棱锥尖峰
-            gpk=n["gpoly"]; m=len(gpk)
-            gymin=min(q[1] for q in gpk); gy_s=max(q[1] for q in gpk); mh=48
-            gymid=(gymin+gy_s)/2
-            def zplat(q):
-                t=(gy_s-q[1])/(gy_s-gymid)
-                return mh*max(0.0,min(1.0,t))**0.85
-            base=[Tp(x,y) for x,y in gpk]
-            rim=[q for q in gpk if q[1] < gymid]
-            top=[(x, y-(mh if q[1] < gymid else zplat(q))) for (x,y),q in zip(base,gpk)]
-            # 端墙
-            for i in range(m):
-                zi=mh if gpk[i][1] < gymid else zplat(gpk[i])
-                zj=mh if gpk[(i+1)%m][1] < gymid else zplat(gpk[(i+1)%m])
-                if (zi < 1 or zj < 1) and (zi > 1 or zj > 1):
-                    A=base[i]; B=base[(i+1)%m]; tA=top[i]; tB=top[(i+1)%m]
-                    if B[0]-A[0] < -0.5:
-                        d.polygon([A,B,tB,tA], fill=shade(col,0.6), outline=shade(col,0.57))
-            # 南坡
-            d.polygon(top, fill=shade(col,0.96), outline=shade(col,0.8))
-            # 台顶凸包（填平 M 凹口）
-            def hull(p2):
-                p2=sorted(p2)
-                if len(p2)<=2: return p2
-                def cr(o,a,b):
-                    return (a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0])
-                lo=[]
-                for q in p2:
-                    while len(lo)>=2 and cr(lo[-2],lo[-1],q)<=0: lo.pop()
-                    lo.append(q)
-                up=[]
-                for q in reversed(p2):
-                    while len(up)>=2 and cr(up[-2],up[-1],q)<=0: up.pop()
-                    up.append(q)
-                return lo[:-1]+up[:-1]
-            hp=hull(rim)
-            hpS=[(Tp(x,y)[0],Tp(x,y)[1]-mh) for x,y in hp]
-            d.polygon(hpS, fill=shade(col,1.04), outline=shade(col,0.82))
-            # 南坡等高线
-            rims=sorted(rim,key=lambda q:q[0])
-            def rimgy(gx):
-                if gx<=rims[0][0]: return rims[0][1]
-                if gx>=rims[-1][0]: return rims[-1][1]
-                for i in range(len(rims)-1):
-                    if rims[i][0]<=gx<=rims[i+1][0]:
-                        tt=(gx-rims[i][0])/(rims[i+1][0]-rims[i][0])
-                        return rims[i][1]+tt*(rims[i+1][1]-rims[i][1])
-                return rims[-1][1]
-            xmin=min(q[0] for q in gpk); xmax=max(q[0] for q in gpk)
-            def _inside(px,py):
-                jj=m-1; ins=False
-                for ii in range(m):
-                    xi,yi=gpk[ii]; xj,yj=gpk[jj]
-                    if ((yi>py)!=(yj>py)) and (px<(xj-xi)*(py-yi)/(yj-yi)+xi): ins=not ins
-                    jj=ii
-                return ins
-            for f in [0.2,0.38,0.56,0.74]:
-                seg=[]; gx=xmin
-                while gx <= xmax:
-                    gyc=gy_s-f*(gy_s-gymid)
-                    if _inside(gx,gyc):
-                        x,y=Tp(gx,gyc); seg.append((x,y-zplat((gx,gyc))))
-                    else:
-                        if len(seg)>1: d.line(seg,fill=shade(col,0.68),width=2)
-                        seg=[]
-                    gx+=1.2
-                if len(seg)>1: d.line(seg,fill=shade(col,0.68),width=2)
-            # 西/东两个圆顶山头（8 边形锥，所有面都填，南/东亮、北/西暗）
-            peaks=sorted(rim,key=lambda q:q[1])[:2]
-            peaks.sort(key=lambda q:q[0])
-            def peak(cx,cy,r,hh,basez):
-                cx_s,cy_s=Tp(cx,cy); NP=8
-                ring=[]
-                for t in range(NP):
-                    th=2*math.pi*t/NP
-                    ex=cx_s+(r*math.cos(th)*TW/2-r*math.sin(th)*TW/2)
-                    ey=cy_s+(r*math.cos(th)*TH/2+r*math.sin(th)*TH/2)
-                    ring.append((ex,ey-basez))
-                tip=(cx_s,cy_s-basez-hh)
+            # 玉屏山：平坦绿色基座 + 两座圆润重叠的山丘（半椭球穹顶，平滑无棱）
+            gpk=n["gpoly"]  # 山基由各圆丘底椭圆自然拼合（圆润无尖角）
+            def draw_dome(dom,hv=1.0):
+                dcx=C.px2gx(dom["cx"]); dcy=C.px2gy(dom["cy"])
+                drx=dom["rx"]*C._SCALE; dry=dom["ry"]*C._SCALE
+                hh=math.sqrt(drx*drx+dry*dry)*11.0*1.08*hv   # 屏幕像素
+                NT=88; NP=52
+                mcol=(78,148,72)                            # 玉屏山丘绿（明亮）
+                V=(0.50,0.60,0.62)                          # 相机方向（东,南,上）
+                L=(0.72,0.52,0.42)                          # 东南侧光（水平主导，消同心环）
+                ground=[Tp(dcx+drx*math.cos(2*math.pi*j/NT),
+                         dcy+dry*math.sin(2*math.pi*j/NT)) for j in range(NT+1)]
+                d.polygon(ground,fill=shade(mcol,0.94),outline=shade(mcol,0.80))
+                def rpt(theta,t):
+                    rr=math.cos(theta); z=hh*math.sin(theta)
+                    x,y=Tp(dcx+drx*rr*math.cos(t), dcy+dry*rr*math.sin(t))
+                    return (x,y-z)
                 for i in range(NP):
-                    A=ring[i]; B=ring[(i+1)%NP]
-                    cf=shade(col,0.99) if B[0]-A[0] < -0.5 else shade(col,0.80)
-                    d.polygon([A,B,tip], fill=cf, outline=shade(col,0.76))
-            r=(gymid-gymin)*0.95
-            for k,(px,py) in enumerate(peaks):
-                peak(px,py,r,12+k*2,mh)
-            # 树丛
-            for k in range(16):
-                rxg=rims[0][0]+(k*47%93)/93*(rims[-1][0]-rims[0][0])
-                ryg=rimgy(rxg)+0.8
-                sx_,sy_=Tp(rxg,ryg); sy_-=mh+7
-                tc=(78,134,66) if k%2==0 else (96,152,76); ss=0.7
-                d.ellipse([sx_-12*ss,sy_-15*ss,sx_+12*ss,sy_+5*ss],fill=tc,outline=shade(tc,0.7))
-                d.ellipse([sx_-7*ss,sy_-23*ss,sx_+7*ss,sy_-5*ss],fill=add(tc,16))
+                    th0=math.pi/2*i/NP; th1=math.pi/2*(i+1)/NP
+                    thm=(th0+th1)/2
+                    for j in range(NT):
+                        t0=2*math.pi*j/NT; t1=2*math.pi*(j+1)/NT
+                        tm=(t0+t1)/2
+                        nx=math.cos(thm)*math.cos(tm); ny=math.cos(thm)*math.sin(tm); nz=math.sin(thm)
+                        vis=nx*V[0]+ny*V[1]+nz*V[2]
+                        if vis<=0.02:
+                            continue
+                        li=nx*L[0]+ny*L[1]+nz*L[2]
+                        cf=shade(mcol, 0.86+0.26*max(0.0,li))
+                        d.polygon([rpt(th0,t0),rpt(th0,t1),rpt(th1,t1),rpt(th1,t0)],fill=cf)
+                # 环山步道（南半坡白色等高线，官方图登山道，t∈[0,π] 连续弧）
+                thw=0.50
+                seg=[]
+                for j in range(NT//2+1):
+                    t=math.pi*j/(NT//2)
+                    seg.append(rpt(thw,t))
+                d.line(seg,fill=(242,242,232),width=3,joint="curve")
+                wE=seg[0]; wW=seg[-1]
+                tx,ty=Tp(dcx,dcy)
+                return (tx,ty-hh),hh,dcx,dcy,drx,dry,wE,wW
+            domes=n.get("domes",[])
+            domes=sorted(domes,key=lambda dm:(C.px2gx(dm["cx"])+C.px2gy(dm["cy"])))
+            tops=[]
+            for i,dm in enumerate(domes):
+                tops.append(draw_dome(dm, 1.0 if i==0 else 1.16))
+            # 东峰『高镜亭』（红色小亭，落在东丘顶）
+            if tops:
+                (sx,sy)=tops[-1][0]; sy-=2
+                d.polygon([(sx-6,sy),(sx+6,sy),(sx+4,sy-6),(sx-4,sy-6)],
+                          fill=(150,54,44),outline=(110,40,34))
+                d.polygon([(sx-9,sy-6),(sx+9,sy-6),(sx,sy-17)],
+                          fill=(186,70,54),outline=(120,44,36))
+                d.rectangle([sx-1,sy-22,sx+1,sy-17],fill=(96,40,32))
+            # 山顶稀疏树丛
+            import random as _rnd
+            _rnd.seed(7)
+            for tip in tops:
+                (cx_,cy_),hh,dcx,dcy,drx,dry,_wE,_wW=tip
+                for k in range(6):
+                    a=_rnd.uniform(0,2*math.pi); rr=_rnd.uniform(0.08,0.55)
+                    ux=drx*rr*math.cos(a); uy=dry*rr*math.sin(a)
+                    theta=math.acos(rr); z=hh*math.sin(theta)
+                    sx_,sy_=Tp(dcx+ux,dcy+uy); sy_-=z
+                    tc=(70,118,58) if k%2 else (88,136,68)
+                    d.ellipse([sx_-7,sy_-11,sx_+7,sy_+3],fill=tc,outline=shade(tc,0.7))
+                    d.ellipse([sx_-4,sy_-17,sx_+4,sy_-5],fill=add(tc,14))
         else:
             d.polygon(pts, fill=col, outline=shade(col,0.82))
 
@@ -547,6 +519,17 @@ def render():
             pi_=Tp(ocx+Rix*math.cos(tt), ocy+Riy*math.sin(tt))
             d.line([po,(po[0],po[1]-zb)], fill=(104,50,38), width=8)
             d.line([pi_,(pi_[0],pi_[1]-zb)], fill=(104,50,38), width=8)
+        # 弯月北缘外、北环路南侧的低矮小横杠（官方图黑箭头所指的小矩形附楼）
+        bx0,by0,bwp,bdp=350,620,25,16
+        gx0=C.px2gx(bx0); gx1=C.px2gx(bx0+bwp)
+        gy0=C.px2gy(by0); gy1=C.px2gy(by0+bdp)
+        bar=[Tp(gx0,gy0),Tp(gx1,gy0),Tp(gx1,gy1),Tp(gx0,gy1)]
+        ground_shadow(bar)
+        bh=h*0.55
+        extrude_poly(d, bar, bh, add(st["wall"],12), floors=3,
+                     edge_units=[2,2,2,2], glass=GLASS, parapet=True, lw=2,
+                     roof_facilities=False)
+        d.polygon([(x,y-bh) for x,y in bar], fill=(188,214,232),outline=GLASS_DK)
         c=iso(ocx,gy+gh*0.5)
         return (c[0]+OX,c[1]+OY-h)
 
@@ -596,6 +579,76 @@ def render():
         pN=pt(math.pi,1.0,h); pS=pt(0,1.0,h)
         d.line([pN,pS],fill=(92,100,110),width=4)
         return (ccx,ccy-h)
+
+    # ---------- 体育馆：扁圆角矩形大跨（世界坐标斜椭圆，长轴东偏北）----------
+    def draw_gymbox(b, st):
+        # 跑道形（圆角矩形）大跨体育馆：红砖方柱 + 朝东南蓝玻璃大立面 + 灰大挑檐
+        pcx,pcy,prx,pry=b["ellipse"]; rot=b.get("rot",0.0)
+        rx=prx; ry=pry
+        rect=rx-ry
+        NS=18; NC=14
+        def spt(a,bb,up=0.0):
+            px=pcx+a*math.cos(rot)-bb*math.sin(rot)
+            py=pcy+a*math.sin(rot)+bb*math.cos(rot)
+            x,y=Tp(C.px2gx(px),C.px2gy(py))
+            return (x,y-up)
+        RC=8   # 四角圆角半径（像素）
+        def stadium(scale=1.0,up=0.0):
+            Rxx=rx*scale; Ryy=ry*scale; rc=RC*scale
+            pts=[]
+            for i in range(NS+1):                                   # 西北长边
+                aa=-Rxx+rc+2*(Rxx-rc)*i/NS; pts.append(spt(aa,-Ryy,up))
+            for i in range(1,NC+1):                                # 东北角
+                th=-math.pi/2+math.pi/2*i/NC
+                pts.append(spt(Rxx-rc+rc*math.cos(th), -Ryy+rc+rc*math.sin(th),up))
+            for i in range(1,NS+1):                                # 东南短边（端）
+                bb=-Ryy+rc+2*(Ryy-rc)*i/NS; pts.append(spt(Rxx,bb,up))
+            for i in range(1,NC+1):                                # 东南角
+                th=math.pi/2*i/NC
+                pts.append(spt(Rxx-rc+rc*math.cos(th), Ryy-rc+rc*math.sin(th),up))
+            for i in range(1,NS+1):                                # 东南长边
+                aa=Rxx-rc-2*(Rxx-rc)*i/NS; pts.append(spt(aa,Ryy,up))
+            for i in range(1,NC+1):                                # 西南角
+                th=math.pi/2+math.pi/2*i/NC
+                pts.append(spt(-Rxx+rc+rc*math.cos(th), Ryy-rc+rc*math.sin(th),up))
+            for i in range(1,NS+1):                                # 西北短边（端）
+                bb=Ryy-rc-2*(Ryy-rc)*i/NS; pts.append(spt(-Rxx,bb,up))
+            for i in range(1,NC+1):                                # 西北角
+                th=math.pi+math.pi/2*i/NC
+                pts.append(spt(-Rxx+rc+rc*math.cos(th), -Ryy+rc+rc*math.sin(th),up))
+            return pts
+        base=stadium(1.0)
+        ground_shadow(base)
+        h=FLOOR_H*7.0; wall=st["wall"]
+        n=len(base)
+        # 红砖墙（所有可见立面，端部圆角+西北长边）
+        for i in range(n):
+            A=base[i]; B=base[(i+1)%n]
+            if B[0]-A[0] < -0.5:
+                ey=B[1]-A[1]
+                face=shade(wall,0.60) if ey>0 else shade(wall,0.84)
+                d.polygon([A,B,(B[0],B[1]-h),(A[0],A[1]-h)],fill=face,outline=INK)
+                d.line([A,(A[0],A[1]-h)],fill=INK,width=2)
+        # 朝东南长边：整面蓝玻璃幕墙（大跨）
+        hl=rx-RC
+        glb=[spt(hl-2*hl*i/NS, ry) for i in range(NS+1)]
+        gb=[(x,y-h*0.03) for x,y in glb]
+        gt=[(x,y-h*0.94) for x,y in glb]
+        d.polygon(gb+gt[::-1],fill=(92,148,184),outline=GLASS_DK)
+        for i in range(1,len(glb),2):
+            x,y=glb[i]; d.line([(x,y-h*0.03),(x,y-h*0.94)],fill=add(GLASS_L,10),width=2)
+        d.line(gt,fill=GLASS_DK,width=2)
+        # 灰大挑檐平顶（外扩一圈）
+        roof=stadium(1.15,h)
+        d.polygon(roof,fill=(150,156,164),outline=INK)
+        inner=stadium(0.84,h+2)
+        d.polygon(inner,fill=(188,192,198),outline=(126,132,140))
+        p1=spt(hl*0.74,0,h+3); p2=spt(-hl*0.74,0,h+3)
+        d.line([p1,p2],fill=(108,116,126),width=6)
+        d.line([p1,p2],fill=(198,202,207),width=2)
+        d.line(roof+[roof[0]],fill=INK,width=3)
+        c=iso(C.px2gx(pcx),C.px2gy(pcy))
+        return (c[0]+OX,c[1]+OY-h)
 
     # ---------- 大学生活动中心：白色波浪曲面 ----------
     def draw_wave(b, st):
@@ -893,24 +946,25 @@ def render():
             d.line([fp(-pw2,s*hl_g),fp(pw2,s*hl_g),
                     fp(pw2,s*(hl_g-pb2)),fp(-pw2,s*(hl_g-pb2))],
                    fill=(252,252,247),width=1)
-        # 风雨操场：沿椭圆外圈的北/西看台（蓝色大台阶，沿短轴端与长轴端）
+        # 风雨操场：东侧篮球场（蓝方块 2×3）+ 排球场（黄方块 1×4）
         if blue:
-            stand=(74,152,198); stand_l=(158,202,224)
-            def arc_ring(t0,t1,r_in,r_out):
-                N=44
-                out=epts(cxg,cyg,a*r_out,b*r_out,1,1,N,t0,t1)
-                inn=epts(cxg,cyg,a*r_in,b*r_in,1,1,N,t1,t0)
-                d.polygon(out+inn,fill=stand,outline=(46,92,126))
-            # 北看台（短轴端，远侧）
-            arc_ring(-math.pi/2-0.64,-math.pi/2+0.64,1.0,1.22)
-            # 西看台（长轴端，左侧）
-            arc_ring(math.pi-1.0,math.pi+1.0,1.0,1.18)
-            # 台阶线（同心弧）
-            for rr in (1.07,1.14):
-                d.line(epts(cxg,cyg,a*rr,b*rr,1,1,40,t0=-math.pi/2-0.60,t1=-math.pi/2+0.60),
-                       fill=stand_l,width=1,joint="curve")
-                d.line(epts(cxg,cyg,a*rr,b*rr,1,1,40,t0=math.pi-0.94,t1=math.pi+0.94),
-                       fill=stand_l,width=1,joint="curve")
+            pcx,pcy,prx,pry=bld["ellipse"]
+            def court(bx,by,cw,ch,fill,ec):
+                gx0=C.px2gx(bx); gy0=C.px2gy(by)
+                gx1=C.px2gx(bx+cw); gy1=C.px2gy(by+ch)
+                d.polygon([Tp(gx0,gy0),Tp(gx1,gy0),Tp(gx1,gy1),Tp(gx0,gy1)],
+                          fill=fill,outline=ec)
+            # 篮球场：2列×4行（蓝）
+            bcw,bch,bg=8,13,2.5; bx0=pcx+44; by0=pcy-28
+            for col in range(2):
+                for row in range(4):
+                    court(bx0+col*(bcw+bg), by0+row*(bch+bg), bcw,bch,
+                          (86,158,202),(46,92,126))
+            # 排球场：1列×5行（黄）
+            vcw,vch,vg=16,13,3; vx0=pcx+70; vy0=pcy-30
+            for row in range(5):
+                court(vx0, vy0+row*(vch+vg), vcw,vch,
+                      (234,186,102),(180,132,64))
         return (cx,cy)
 
     # ---------- 校门 ----------
@@ -989,6 +1043,8 @@ def render():
             ctr=draw_crescent(b,st)
         elif kind=="capsule":
             ctr=draw_capsule(b,st)
+        elif kind=="gymbox":
+            ctr=draw_gymbox(b,st)
         elif kind=="libL":
             ctr=draw_libL(b,st)
         elif kind=="u":
@@ -1035,8 +1091,8 @@ def render():
     img=Image.alpha_composite(img.convert("RGBA"),layer)
     dl=ImageDraw.Draw(img)
     ftitle=font(36); fsub=font(20); fleg=font(19); flegb=font(21)
-    dl.text((40,30),"北京化工大学昌平校区 · 2.5D等距数字校园 · 楼宇框架（v3.6 墨蓝手绘轮廓校准·审批稿）",fill=(28,42,52),font=ftitle)
-    dl.text((42,82),"严格按官方平面图墨蓝手绘轮廓修正（一教弯月双弧拱门·体育馆倾斜胶囊·文理楼E形·图书馆L形·二教锯齿·紫竹竖长·玉屏双峰·活动中心两块）；共 %d 个建筑/场地对象，后续各建筑替换为像素风插图。"%len(recs),
+    dl.text((40,30),"北京化工大学昌平校区 · 2.5D等距数字校园 · 楼宇框架（v3.7 真实轮廓校准·审批稿）",fill=(28,42,52),font=ftitle)
+    dl.text((42,82),"按官方平面图与墨蓝手绘轮廓及官网实景照片校准（一教弯月双弧拱门+北侧小横杠·体育馆跑道形大跨灰挑檐·两操场椭圆田径场·玉屏双峰高镜亭+环山步道·文理楼E形·图书馆L形·二教锯齿·紫竹竖长·活动中心两块）；共 %d 个建筑/场地对象，后续各建筑替换为像素风插图。"%len(recs),
             fill=(88,98,108),font=fsub)
 
     _name_pos={n["name"]:(n["grid"][0]+n["grid"][2]/2, n["grid"][1]+n["grid"][3]/2)
