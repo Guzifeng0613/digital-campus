@@ -37,16 +37,16 @@ def add(c, d): return tuple(max(0,min(255,v+d)) for v in c)
 
 # 各建筑材质（墙体主色）与形态
 STYLE = {
-    "TEACH-1":        dict(kind="u",      wall=(176,78,58),  floors=5, open_="N", arc_=True, porch=True),
-    "TEACH-2":        dict(kind="block",  wall=(176,78,58),  floors=5),
-    "LIB":            dict(kind="lib",    wall=(172,74,54),  floors=6),
-    "WENLI":          dict(kind="block",  wall=(112,142,168),floors=5),   # 文科楼（在建，官方图蓝）
+    "TEACH-1":        dict(kind="crescent", wall=(176,78,58),  floors=5),
+    "TEACH-2":        dict(kind="polyblock", wall=(176,78,58),  floors=5),
+    "LIB":            dict(kind="libL",   wall=(172,74,54),  floors=6),
+    "WENLI":          dict(kind="polyblock", wall=(112,142,168),floors=5),   # 文科楼（在建，官方图蓝）
     "ACT":            dict(kind="wave",   wall=(226,224,216),floors=3),
-    "CAN-YULAN":      dict(kind="block",  wall=(138,158,176),floors=3),   # 玉兰食堂（在建，蓝）
-    "GYM":            dict(kind="gym",    wall=(150,158,168),floors=3),
+    "CAN-YULAN":      dict(kind="polyblock", wall=(138,158,176),floors=3),   # 玉兰食堂（在建，蓝）
+    "GYM":            dict(kind="capsule",wall=(150,158,168),floors=3),
     "FIELD-N":        dict(kind="field"),
     "FIELD-W":        dict(kind="field"),
-    "CAN-ZIZHU":      dict(kind="block",  wall=(182,84,62),  floors=3),
+    "CAN-ZIZHU":      dict(kind="polyblock", wall=(182,84,62),  floors=3),
     "ENG-TRAIN":      dict(kind="polyblock", wall=(176,92,68),floors=4),
     "GATE-S":         dict(kind="gate",   axis="h"),
     "GATE-E":         dict(kind="gate",   axis="v"),
@@ -130,40 +130,100 @@ def render():
             cxx=sum(p[0] for p in pts)/len(pts); cyy=sum(p[1] for p in pts)/len(pts)
             d.arc([cxx-26,cyy-10,cxx+26,cyy+18],200,330,fill=add(col,40),width=2)
         elif n["cat"]=="mountain":
-            # 五层圆润隆起山丘
-            mcx=sum(p[0] for p in pts)/len(pts); mcy=sum(p[1] for p in pts)/len(pts)
-            mh=50; L=5
-            prev=pts
-            for li in range(L+1):
-                sc=1.0-0.30*li/L; zf=li/L
-                cur=[(mcx+(x-mcx)*sc, mcy+(y-mcy)*sc-mh*zf) for x,y in pts]
-                if li>0:
-                    for i in range(len(pts)):
-                        A=prev[i]; B=prev[(i+1)%len(pts)]
-                        tA=cur[i]; tB=cur[(i+1)%len(pts)]
-                        if B[0]-A[0] < -0.5:
-                            d.polygon([A,B,tB,tA],
-                                      fill=shade(col,0.82+0.04*li/L), outline=shade(col,0.72))
-                d.polygon(cur, fill=shade(col,1.04+0.05*li/L), outline=shade(col,0.82))
-                prev=cur
-            d.line(prev+[prev[0]], fill=shade(col,0.64), width=2)
-            # 山顶树丛
-            gp=n["gpoly"]; xs=[p[0] for p in gp]; ys=[p[1] for p in gp]
+            # 南坡斜面 + 平整台顶（脊线凸包填平 M 凹口）+ 西/东两个棱锥尖峰
+            gpk=n["gpoly"]; m=len(gpk)
+            gymin=min(q[1] for q in gpk); gy_s=max(q[1] for q in gpk); mh=48
+            gymid=(gymin+gy_s)/2
+            def zplat(q):
+                t=(gy_s-q[1])/(gy_s-gymid)
+                return mh*max(0.0,min(1.0,t))**0.85
+            base=[Tp(x,y) for x,y in gpk]
+            rim=[q for q in gpk if q[1] < gymid]
+            top=[(x, y-(mh if q[1] < gymid else zplat(q))) for (x,y),q in zip(base,gpk)]
+            # 端墙
+            for i in range(m):
+                zi=mh if gpk[i][1] < gymid else zplat(gpk[i])
+                zj=mh if gpk[(i+1)%m][1] < gymid else zplat(gpk[(i+1)%m])
+                if (zi < 1 or zj < 1) and (zi > 1 or zj > 1):
+                    A=base[i]; B=base[(i+1)%m]; tA=top[i]; tB=top[(i+1)%m]
+                    if B[0]-A[0] < -0.5:
+                        d.polygon([A,B,tB,tA], fill=shade(col,0.6), outline=shade(col,0.57))
+            # 南坡
+            d.polygon(top, fill=shade(col,0.96), outline=shade(col,0.8))
+            # 台顶凸包（填平 M 凹口）
+            def hull(p2):
+                p2=sorted(p2)
+                if len(p2)<=2: return p2
+                def cr(o,a,b):
+                    return (a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0])
+                lo=[]
+                for q in p2:
+                    while len(lo)>=2 and cr(lo[-2],lo[-1],q)<=0: lo.pop()
+                    lo.append(q)
+                up=[]
+                for q in reversed(p2):
+                    while len(up)>=2 and cr(up[-2],up[-1],q)<=0: up.pop()
+                    up.append(q)
+                return lo[:-1]+up[:-1]
+            hp=hull(rim)
+            hpS=[(Tp(x,y)[0],Tp(x,y)[1]-mh) for x,y in hp]
+            d.polygon(hpS, fill=shade(col,1.04), outline=shade(col,0.82))
+            # 南坡等高线
+            rims=sorted(rim,key=lambda q:q[0])
+            def rimgy(gx):
+                if gx<=rims[0][0]: return rims[0][1]
+                if gx>=rims[-1][0]: return rims[-1][1]
+                for i in range(len(rims)-1):
+                    if rims[i][0]<=gx<=rims[i+1][0]:
+                        tt=(gx-rims[i][0])/(rims[i+1][0]-rims[i][0])
+                        return rims[i][1]+tt*(rims[i+1][1]-rims[i][1])
+                return rims[-1][1]
+            xmin=min(q[0] for q in gpk); xmax=max(q[0] for q in gpk)
             def _inside(px,py):
-                jj=len(gp)-1; ins=False
-                for ii in range(len(gp)):
-                    xi,yi=gp[ii]; xj,yj=gp[jj]
+                jj=m-1; ins=False
+                for ii in range(m):
+                    xi,yi=gpk[ii]; xj,yj=gpk[jj]
                     if ((yi>py)!=(yj>py)) and (px<(xj-xi)*(py-yi)/(yj-yi)+xi): ins=not ins
                     jj=ii
                 return ins
-            for k in range(13):
-                gx=(xs[0]+xs[3])/2 + (k*37%60-30)
-                gy=(ys[0]+ys[5])/2 + (k*53%46-23)
-                if not _inside(gx,gy): continue
-                sx_,sy_=Tp(gx,gy); sy_-=mh*0.92
-                tcol=(78,134,66) if k%2==0 else (96,152,76); s=0.85
-                d.ellipse([sx_-12*s,sy_-16*s,sx_+12*s,sy_+6*s],fill=tcol,outline=shade(tcol,0.7))
-                d.ellipse([sx_-7*s,sy_-24*s,sx_+7*s,sy_-6*s],fill=add(tcol,16))
+            for f in [0.2,0.38,0.56,0.74]:
+                seg=[]; gx=xmin
+                while gx <= xmax:
+                    gyc=gy_s-f*(gy_s-gymid)
+                    if _inside(gx,gyc):
+                        x,y=Tp(gx,gyc); seg.append((x,y-zplat((gx,gyc))))
+                    else:
+                        if len(seg)>1: d.line(seg,fill=shade(col,0.68),width=2)
+                        seg=[]
+                    gx+=1.2
+                if len(seg)>1: d.line(seg,fill=shade(col,0.68),width=2)
+            # 西/东两个圆顶山头（8 边形锥，所有面都填，南/东亮、北/西暗）
+            peaks=sorted(rim,key=lambda q:q[1])[:2]
+            peaks.sort(key=lambda q:q[0])
+            def peak(cx,cy,r,hh,basez):
+                cx_s,cy_s=Tp(cx,cy); NP=8
+                ring=[]
+                for t in range(NP):
+                    th=2*math.pi*t/NP
+                    ex=cx_s+(r*math.cos(th)*TW/2-r*math.sin(th)*TW/2)
+                    ey=cy_s+(r*math.cos(th)*TH/2+r*math.sin(th)*TH/2)
+                    ring.append((ex,ey-basez))
+                tip=(cx_s,cy_s-basez-hh)
+                for i in range(NP):
+                    A=ring[i]; B=ring[(i+1)%NP]
+                    cf=shade(col,0.99) if B[0]-A[0] < -0.5 else shade(col,0.80)
+                    d.polygon([A,B,tip], fill=cf, outline=shade(col,0.76))
+            r=(gymid-gymin)*0.95
+            for k,(px,py) in enumerate(peaks):
+                peak(px,py,r,12+k*2,mh)
+            # 树丛
+            for k in range(16):
+                rxg=rims[0][0]+(k*47%93)/93*(rims[-1][0]-rims[0][0])
+                ryg=rimgy(rxg)+0.8
+                sx_,sy_=Tp(rxg,ryg); sy_-=mh+7
+                tc=(78,134,66) if k%2==0 else (96,152,76); ss=0.7
+                d.ellipse([sx_-12*ss,sy_-15*ss,sx_+12*ss,sy_+5*ss],fill=tc,outline=shade(tc,0.7))
+                d.ellipse([sx_-7*ss,sy_-23*ss,sx_+7*ss,sy_-5*ss],fill=add(tc,16))
         else:
             d.polygon(pts, fill=col, outline=shade(col,0.82))
 
@@ -264,13 +324,14 @@ def render():
                 face = shade(wall,0.62) if ey>0 else shade(wall,0.84)  # 东墙暗/南墙亮
                 tA=(A[0],A[1]-h); tB=(B[0],B[1]-h)
                 dr.polygon([A,B,tB,tA], fill=face, outline=edge)
-                facade_windows(dr, A, B, h, floors, edge_units[i], glass)
+                if glass is not None:
+                    facade_windows(dr, A, B, h, floors, edge_units[i], glass)
                 dr.line([A,tA], fill=edge, width=2)     # 竖棱
         # 屋顶
         top=[(x,y-z_base-h) for x,y in pts2]
-        if parapet:
+        cx=sum(p[0] for p in top)/n; cy=sum(p[1] for p in top)/n
+        if parapet and n==4:
             dr.polygon(top, fill=add(wall,14), outline=edge)   # 女儿墙顶
-            cx=sum(p[0] for p in top)/n; cy=sum(p[1] for p in top)/n
             inner=[(cx+(x-cx)*0.85, cy+(y-cy)*0.85) for x,y in top]
             dr.polygon(inner, fill=roof, outline=shade(roof,0.8))
             # 屋面分格线
@@ -285,6 +346,11 @@ def render():
                 sk=[vlr(sk[0],sk[1],0.18),vlr(sk[1],sk[2],0.3),
                     vlr(sk[2],sk[3],0.22),vlr(sk[3],sk[0],0.28)]
                 dr.polygon(sk, fill=GLASS_DK, outline=shade(GLASS_DK,0.65))
+        elif parapet:
+            # 凹多边形：屋顶平铺，保留女儿墙红边，不画内圈/X分格（避免跨凹口伪影）
+            dr.polygon(top, fill=add(wall,14), outline=edge)
+            shrink=[(cx+(x-cx)*0.955, cy+(y-cy)*0.955) for x,y in top]
+            dr.polygon(shrink, fill=roof, outline=shade(roof,0.82))
         else:
             dr.polygon(top, fill=add(wall,12), outline=edge)
         dr.line(top+[top[0]], fill=edge, width=lw)   # 檐口轮廓
@@ -385,28 +451,184 @@ def render():
         d.polygon(inner, fill=(150,146,138), outline=shade((150,146,138),0.8))
         return roof_center(gx,gy,gw,gh,h)
 
+    # ---------- 图书馆（L形：主体大方块 + 东侧竖向百叶塔楼）----------
+    def draw_libL(b, st):
+        gp=b["gpoly"]; h=FLOOR_H*st["floors"]
+        # 主体大方块 + 东侧竖向塔楼（北半部相连，L 形）
+        main_g=[(gp[0][0],gp[0][1]),(gp[6][0],gp[0][1]),
+                (gp[6][0],gp[7][1]),(gp[0][0],gp[7][1])]
+        tower_g=[(gp[1][0],gp[2][1]),(gp[3][0],gp[3][1]),
+                 (gp[4][0],gp[4][1]),(gp[1][0],gp[4][1])]
+        main=[Tp(x,y) for x,y in main_g]
+        tower=[Tp(x,y) for x,y in tower_g]
+        def uun(pts):
+            return [max(1,round(math.hypot(B[0]-A[0],B[1]-A[1])/16))
+                    for A,B in zip(pts,pts[1:]+[pts[0]])]
+        # ---- 主体 ----
+        ground_shadow(main)
+        top=extrude_poly(d, main, h, st["wall"], floors=st["floors"],
+                         edge_units=uun(main), glass=GLASS,
+                         roof_facilities=False, parapet=False)
+        # 水平陶土百叶条带（每层一条明线）
+        for i in range(len(main)):
+            A=main[i]; B=main[(i+1)%len(main)]
+            if B[0]-A[0] < -0.5:
+                for f in range(1,st["floors"]):
+                    v=f/st["floors"]
+                    d.line([(A[0],A[1]-h*v),(B[0],B[1]-h*v)], fill=(216,152,118), width=2)
+        d.polygon(top, fill=add(st["wall"],18), outline=INK)
+        cx=sum(p[0] for p in top)/len(top); cy=sum(p[1] for p in top)/len(top)
+        inner=[(cx+(x-cx)*0.86,cy+(y-cy)*0.86) for x,y in top]
+        d.polygon(inner, fill=(150,146,138), outline=shade((150,146,138),0.82))
+        # ---- 东侧塔楼（高出约 1.6 层，深色玻璃 + 竖向百叶）----
+        ht=h+FLOOR_H*1.6
+        topT=extrude_poly(d, tower, ht, add(st["wall"],8), floors=st["floors"]+1,
+                          edge_units=uun(tower), glass=GLASS_DK,
+                          roof_facilities=False, parapet=True)
+        for i in range(len(tower)):
+            A=tower[i]; B=tower[(i+1)%len(tower)]
+            if B[0]-A[0] < -0.5:
+                steps=max(3,round(math.hypot(B[0]-A[0],B[1]-A[1])/9))
+                for k in range(1,steps):
+                    u=k/steps
+                    P=(A[0]+(B[0]-A[0])*u, A[1]+(B[1]-A[1])*u)
+                    d.line([(P[0],P[1]-ht*0.06),(P[0],P[1]-ht*0.94)],
+                           fill=add(st["wall"],34), width=1)
+        return (cx,cy-h)
+
+    # ---------- 一教：弯月双弧翼 + 中央通透大拱门（凸朝南）----------
+    def draw_crescent(b, st):
+        gx,gy,gw,gh=b["grid"]; h=FLOOR_H*st["floors"]
+        ocx=gx+gw/2; ocy=gy
+        Rx=gw/2; Ry=gh
+        dth=max(4.0, gh*0.44)              # 弯月条带厚度（南北网格）
+        Rix=Rx-dth; Riy=Ry-dth
+        gap=0.27                           # 中央拱门缺口（弧度，绕最南点 π/2）
+        tL=math.pi/2+gap; tR=math.pi/2-gap # 西/东拱门断面（θ∈[0,π] 凸朝南）
+        N=28
+        def ring_pts(th0,th1,outer):
+            Rx_=Rx if outer else Rix; Ry_=Ry if outer else Riy
+            ts=[th0+(th1-th0)*i/N for i in range(N+1)]
+            return [Tp(ocx+Rx_*math.cos(t), ocy+Ry_*math.sin(t)) for t in ts]
+        # 西翼（外弧 西端π→最南tL）；东翼（外弧 东端0→最南tR），保证外弧屏幕 x 递减→画墙
+        wingL=ring_pts(math.pi,tL,True)+ring_pts(tL,math.pi,False)
+        wingR=ring_pts(0,tR,True)+ring_pts(tR,0,False)
+        # 拱门内院铺装（缺口内弧→向北扇形）
+        yard=ring_pts(tR,tL,False)+[Tp(ocx,gy-gh*0.18)]
+        d.polygon(yard, fill=(200,190,170), outline=(178,168,148))
+        # 挤出两翼（红墙实墙，缺口断面为拱门柱；外弧窗后单独加）
+        for wing in (wingL,wingR):
+            uu=[max(1,round(len(wing)/24))]*len(wing)
+            extrude_poly(d, wing, h, st["wall"], floors=st["floors"],
+                         edge_units=uu, glass=None, roof_facilities=False)
+        # 两翼外弧（可见南弧）水平条窗 + 竖向格栅（只画在已立墙的边）
+        for wing in (wingL,wingR):
+            half=len(wing)//2
+            arc=wing[:half+1]
+            for i in range(len(arc)-1):
+                A=arc[i]; B=arc[i+1]
+                if B[0]-A[0] >= -0.5: continue
+                ey=B[1]-A[1]
+                win=(102,134,156) if ey>0 else (122,152,172)
+                for f in range(1,st["floors"]):
+                    v=f/st["floors"]
+                    d.line([(A[0],A[1]-h*v),(B[0],B[1]-h*v)], fill=win, width=3)
+                d.line([A,(A[0],A[1]-h*0.94)], fill=(108,54,42), width=1)
+        # 中央架空连廊（不落地，拱门上方，薄横梁，与两翼同色）
+        link=ring_pts(tR,tL,True)+ring_pts(tL,tR,False)
+        zb=h*0.80
+        d.polygon(link, fill=(188,178,158))  # 门洞内铺装（通道，非深墙）
+        extrude_poly(d, link, h*0.24, add(st["wall"],12), floors=st["floors"],
+                     edge_units=[2]*len(link), glass=GLASS,
+                     parapet=True, lw=3, z_base=zb, roof_facilities=False)
+        # 拱门两根立柱（断面强调，落到地面）
+        for tt in (tL,tR):
+            po=Tp(ocx+Rx*math.cos(tt), ocy+Ry*math.sin(tt))
+            pi_=Tp(ocx+Rix*math.cos(tt), ocy+Riy*math.sin(tt))
+            d.line([po,(po[0],po[1]-zb)], fill=(104,50,38), width=8)
+            d.line([pi_,(pi_[0],pi_[1]-zb)], fill=(104,50,38), width=8)
+        c=iso(ocx,gy+gh*0.5)
+        return (c[0]+OX,c[1]+OY-h)
+
+    # ---------- 体育馆：旋转胶囊（圆角矩形大跨）+ 平顶红墙 ----------
+    def draw_capsule(b, st):
+        # 直接在屏幕坐标构造竖直长胶囊（补偿 2:1 等距畸变），长轴沿东南=屏幕竖直
+        gx,gy,gw,gh=b["grid"]; h=FLOOR_H*st["floors"]
+        c=iso(gx+gw/2,gy+gh/2); ccx=c[0]+OX; ccy=c[1]+OY
+        sA=(gw+gh)*4.8          # 长半轴（屏幕竖直）
+        sB=sA*0.50              # 短半轴（屏幕水平）
+        rotS=-0.06              # 屏幕旋转（长轴略偏，对应官方 35° 斜向）
+        N=64
+        Lv=(sA*math.sin(rotS), sA*math.cos(rotS))           # 长轴（屏幕下）
+        Sv=(sB*math.cos(rotS), -sB*math.sin(rotS))          # 短轴（屏幕右）
+        def cpts(scale=1.0,up=0.0):
+            la=(Lv[0]*scale,Lv[1]*scale); sa=(Sv[0]*scale,Sv[1]*scale)
+            return [(ccx+math.cos(t)*la[0]+math.sin(t)*sa[0],
+                     ccy+math.cos(t)*la[1]+math.sin(t)*sa[1]-up)
+                    for t in [2*math.pi*i/N for i in range(N+1)]]
+        base=cpts(1.0)
+        ground_shadow(base)
+        # 南半弧红墙：t 从 π/2（最东）经 0（最南）到 -π/2（最西），屏幕 x 递减
+        ts=[math.pi/2-math.pi*i/N for i in range(N+1)]
+        def pt(t,scale=1.0,up=0.0):
+            la=(Lv[0]*scale,Lv[1]*scale); sa=(Sv[0]*scale,Sv[1]*scale)
+            return (ccx+math.cos(t)*la[0]+math.sin(t)*sa[0],
+                    ccy+math.cos(t)*la[1]+math.sin(t)*sa[1]-up)
+        for i in range(N):
+            A=pt(ts[i]); B=pt(ts[i+1])
+            ey=B[1]-A[1]
+            face=shade((156,66,50),0.60) if ey>0 else shade((156,66,50),0.86)
+            d.polygon([A,B,(B[0],B[1]-h),(A[0],A[1]-h)],fill=face,outline=INK)
+        # 南弧正面蓝色玻璃大立面（t∈[-0.95,0.95]，最南弧宽段）
+        gb=[pt(t) for t in [0.95-1.9*i/28 for i in range(29)]]
+        gt=[(x,y-h*0.86) for x,y in gb]
+        gb2=[(x,y-h*0.08) for x,y in gb]
+        d.polygon(gb2+gt[::-1],fill=(92,148,182),outline=GLASS_DK)
+        for i in range(2,28,3):
+            x,y=gb[i]; d.line([(x,y-h*0.08),(x,y-h*0.86)],fill=add(GLASS_L,14),width=2)
+        d.line([(gb[0][0],gb[0][1]-h*0.86),(gb[-1][0],gb[-1][1]-h*0.86)],fill=GLASS_DK,width=2)
+        # 灰色大挑檐平顶（微外扩）+ 内圈
+        roof=cpts(1.05,h)
+        d.polygon(roof,fill=(158,164,172),outline=INK)
+        rin=cpts(0.78,h)
+        d.polygon(rin,fill=(120,128,138),outline=shade((120,128,138),0.8))
+        # 屋面采光带（沿长轴）
+        pN=pt(math.pi,1.0,h); pS=pt(0,1.0,h)
+        d.line([pN,pS],fill=(92,100,110),width=4)
+        return (ccx,ccy-h)
+
     # ---------- 大学生活动中心：白色波浪曲面 ----------
     def draw_wave(b, st):
         gx,gy,gw,gh=b["grid"]; h=FLOOR_H*st["floors"]
         h0=h*0.80
-        # 平面为楔状（官方图），地面轮廓
-        base=[Tp(gx,gy+gh*0.12),Tp(gx+gw*0.6,gy),Tp(gx+gw,gy+gh*0.30),
-              Tp(gx+gw,gy+gh),Tp(gx+gw*0.16,gy+gh)]
+        x0=gx+gw*0.30                # 大主体西界；西侧 30% 为独立小三角楔块
+        gw2=gw*0.70
+        # --- 西侧小三角楔块（官方图『左小三角+右大主体』之小楔）---
+        tri=[Tp(gx,gy+gh*0.30),Tp(x0,gy+gh*0.06),Tp(x0,gy+gh*0.82),
+             Tp(gx+gw*0.02,gy+gh*0.66)]
+        ground_shadow(tri)
+        htri=h*0.70
+        extrude_poly(d, tri, htri, shade(st["wall"],0.98), floors=st["floors"],
+                     edge_units=[2,3,3,2], glass=GLASS, roof_facilities=False)
+        d.polygon([tri[0],tri[1],tri[2]], fill=(182,208,224), outline=GLASS_DK)
+        # --- 东侧大主体（不规则楔 + 波浪屋顶）---
+        base=[Tp(x0,gy+gh*0.12),Tp(x0+gw2*0.6,gy),Tp(x0+gw2,gy+gh*0.30),
+              Tp(x0+gw2,gy+gh),Tp(x0+gw2*0.16,gy+gh)]
         ground_shadow(base)
         # 波浪幅度（沿长轴，约2个波峰，非负）
         def At(t): return h*0.66*math.sin(math.pi*1.9*t)**2
+        def X(t): return x0+gw2*t
         def roof_pt(t,s):
-            x=gx+gw*t
-            y=gy+gh*(0.10+0.90*s)
+            x=X(t); y=gy+gh*(0.10+0.90*s)
             p=Tp(x,y); z=h0+At(t)*(0.60+0.40*s)
             return (p[0],p[1]-z)
         steps=30
         # 山墙（东西两端封口）
         for t in (0.0,1.0):
-            p0=Tp(gx+gw*t,gy+gh*0.10); p1=Tp(gx+gw*t,gy+gh)
+            p0=Tp(X(t),gy+gh*0.10); p1=Tp(X(t),gy+gh)
             d.polygon([p0,p1,roof_pt(t,1),roof_pt(t,0)], fill=shade(st["wall"],0.78), outline=INK)
         # 南墙：波浪顶
-        def sg(t): return Tp(gx+gw*t,gy+gh)
+        def sg(t): return Tp(X(t),gy+gh)
         south=[roof_pt(i/steps,1) for i in range(steps+1)]
         south_g=[sg(i/steps) for i in range(steps+1)]
         d.polygon(list(south_g)+list(reversed(south)), fill=shade(st["wall"],0.90), outline=INK)
@@ -439,19 +661,15 @@ def render():
         # 波峰脊线（亮白）
         for k in range(2):
             tcr=0.0+(k+1)/1.9
-            line=[(roof_pt(tcr,0)[0],roof_pt(tcr,0)[1])]
-            # 沿波峰画一条短亮线
-            tt=tcr
             pts=[]
             for s in range(11):
-                ss=s/10
-                pts.append(roof_pt(tt,ss))
+                pts.append(roof_pt(tcr,s/10))
             d.line(pts, fill=(255,255,252), width=3)
         # 南缘、北缘波浪轮廓
         for s in (0.0,1.0):
             line=[roof_pt(i/steps,s) for i in range(steps+1)]
             d.line(line, fill=INK, width=2)
-        c=iso(gx+gw/2,gy+gh/2)
+        c=iso(gx+gw*0.62,gy+gh/2)
         return (c[0]+OX,c[1]+OY-h0-h*0.5)
 
     # ---------- 体育馆：矩形大跨（红墙+蓝玻璃+大挑檐平顶）----------
@@ -767,6 +985,12 @@ def render():
         kind=st["kind"]
         if kind=="field":
             ctr=draw_field(b,st)
+        elif kind=="crescent":
+            ctr=draw_crescent(b,st)
+        elif kind=="capsule":
+            ctr=draw_capsule(b,st)
+        elif kind=="libL":
+            ctr=draw_libL(b,st)
         elif kind=="u":
             ctr=draw_u(b,st)
         elif kind=="lib":
@@ -811,8 +1035,8 @@ def render():
     img=Image.alpha_composite(img.convert("RGBA"),layer)
     dl=ImageDraw.Draw(img)
     ftitle=font(36); fsub=font(20); fleg=font(19); flegb=font(21)
-    dl.text((40,30),"北京化工大学昌平校区 · 2.5D等距数字校园 · 楼宇框架（v3 官网照片校准·审批稿）",fill=(28,42,52),font=ftitle)
-    dl.text((42,82),"已按官方平面图定位、官网/航拍照片校准外形（一教弧形·体育馆/图书馆红墙蓝玻璃·活动中心波浪·北操场红跑道）；共 %d 个建筑/场地对象，后续各建筑替换为像素风插图。"%len(recs),
+    dl.text((40,30),"北京化工大学昌平校区 · 2.5D等距数字校园 · 楼宇框架（v3.6 墨蓝手绘轮廓校准·审批稿）",fill=(28,42,52),font=ftitle)
+    dl.text((42,82),"严格按官方平面图墨蓝手绘轮廓修正（一教弯月双弧拱门·体育馆倾斜胶囊·文理楼E形·图书馆L形·二教锯齿·紫竹竖长·玉屏双峰·活动中心两块）；共 %d 个建筑/场地对象，后续各建筑替换为像素风插图。"%len(recs),
             fill=(88,98,108),font=fsub)
 
     _name_pos={n["name"]:(n["grid"][0]+n["grid"][2]/2, n["grid"][1]+n["grid"][3]/2)
