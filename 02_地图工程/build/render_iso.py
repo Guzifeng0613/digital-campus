@@ -40,12 +40,13 @@ STYLE = {
     "TEACH-1":        dict(kind="u",      wall=(176,78,58),  floors=5, open_="N", arc_=True, porch=True),
     "TEACH-2":        dict(kind="block",  wall=(176,78,58),  floors=5),
     "LIB":            dict(kind="lib",    wall=(172,74,54),  floors=6),
+    "WENLI":          dict(kind="block",  wall=(112,142,168),floors=5),   # 文科楼（在建，官方图蓝）
     "ACT":            dict(kind="wave",   wall=(226,224,216),floors=3),
-    "MUSEUM-HISTORY": dict(kind="cupola", wall=(168,82,56),  floors=3),
+    "CAN-YULAN":      dict(kind="block",  wall=(138,158,176),floors=3),   # 玉兰食堂（在建，蓝）
     "GYM":            dict(kind="gym",    wall=(150,158,168),floors=3),
     "FIELD-N":        dict(kind="field"),
+    "FIELD-W":        dict(kind="field"),
     "CAN-ZIZHU":      dict(kind="block",  wall=(182,84,62),  floors=3),
-    "SVC-LOGI":       dict(kind="u",      wall=(128,140,150),floors=4, open_="N"),
     "ENG-TRAIN":      dict(kind="polyblock", wall=(176,92,68),floors=4),
     "GATE-S":         dict(kind="gate",   axis="h"),
     "GATE-E":         dict(kind="gate",   axis="v"),
@@ -64,10 +65,10 @@ def font(sz):
 
 LANDMARK = {
     "LIB": "图书馆", "TEACH-1": "第一教学楼", "TEACH-2": "第二教学楼",
-    "MUSEUM-HISTORY": "校史馆", "ACT": "大学生活动中心",
-    "GYM": "体育馆", "FIELD-N": "北操场",
-    "CAN-ZIZHU": "紫竹餐厅", "SVC-LOGI": "后勤服务楼",
-    "ENG-TRAIN": "泰瑞楼", "GATE-S": "南门(正门)", "GATE-E": "东门",
+    "WENLI": "文理楼", "ACT": "大学生活动中心", "CAN-YULAN": "玉兰食堂",
+    "GYM": "体育馆", "FIELD-N": "北操场", "FIELD-W": "风雨操场",
+    "CAN-ZIZHU": "紫竹食堂",
+    "ENG-TRAIN": "工程训练中心", "GATE-S": "南门(正门)", "GATE-E": "东门",
     "GATE-W": "西门",
 }
 
@@ -619,6 +620,7 @@ def render():
 
     # ---------- 田径场 ----------
     def draw_field(b, st):
+        bld=b
         gx,gy,gw,gh=b["grid"]
         cxg,cyg=gx+gw/2,gy+gh/2
         a,b=gw/2,gh/2
@@ -630,16 +632,23 @@ def render():
             if outline:
                 d.line(pts,fill=outline,width=ow,joint="curve")
         # 基底（塑胶深底）
-        efill(1.0,1.0,(118,50,42))
-        # 外圈白沿线
-        efill(0.975,0.975,(246,244,236))
-        # 跑道（由外向内逐圈，红色塑胶）
-        for k,(fa,col) in enumerate([(0.965,(190,74,50)),(0.915,(196,80,54)),
-                                     (0.865,(200,86,58)),(0.815,(204,92,62)),
-                                     (0.765,(208,98,66))]):
-            efill(fa,fa,col)
-        # 内沿白圈
-        efill(0.745,0.745,(246,244,236))
+        blue = bld.get("field") == "blue"
+        if blue:
+            # 风雨操场（西田径场）：暖橙跑道 + 北/西侧蓝色看台
+            efill(1.0,1.0,(108,82,40))
+            efill(0.975,0.975,(246,244,236))
+            for fa,col in [(0.965,(216,152,70)),(0.915,(222,160,76)),
+                           (0.865,(228,168,82)),(0.815,(232,174,88)),(0.765,(236,180,94))]:
+                efill(fa,fa,col)
+            efill(0.745,0.745,(246,244,236))
+        else:
+            # 北操场（东田径场）：红色塑胶跑道
+            efill(1.0,1.0,(118,50,42))
+            efill(0.975,0.975,(246,244,236))
+            for fa,col in [(0.965,(190,74,50)),(0.915,(196,80,54)),
+                           (0.865,(200,86,58)),(0.815,(204,92,62)),(0.765,(208,98,66))]:
+                efill(fa,fa,col)
+            efill(0.745,0.745,(246,244,236))
         # 内场草地
         efill(0.735,0.735,(96,156,78))
         # 足球场（网格空间内接草地椭圆）
@@ -666,6 +675,24 @@ def render():
             d.line([fp(-pw2,s*hl_g),fp(pw2,s*hl_g),
                     fp(pw2,s*(hl_g-pb2)),fp(-pw2,s*(hl_g-pb2))],
                    fill=(252,252,247),width=1)
+        # 风雨操场：沿椭圆外圈的北/西看台（蓝色大台阶，沿短轴端与长轴端）
+        if blue:
+            stand=(74,152,198); stand_l=(158,202,224)
+            def arc_ring(t0,t1,r_in,r_out):
+                N=44
+                out=epts(cxg,cyg,a*r_out,b*r_out,1,1,N,t0,t1)
+                inn=epts(cxg,cyg,a*r_in,b*r_in,1,1,N,t1,t0)
+                d.polygon(out+inn,fill=stand,outline=(46,92,126))
+            # 北看台（短轴端，远侧）
+            arc_ring(-math.pi/2-0.64,-math.pi/2+0.64,1.0,1.22)
+            # 西看台（长轴端，左侧）
+            arc_ring(math.pi-1.0,math.pi+1.0,1.0,1.18)
+            # 台阶线（同心弧）
+            for rr in (1.07,1.14):
+                d.line(epts(cxg,cyg,a*rr,b*rr,1,1,40,t0=-math.pi/2-0.60,t1=-math.pi/2+0.60),
+                       fill=stand_l,width=1,joint="curve")
+                d.line(epts(cxg,cyg,a*rr,b*rr,1,1,40,t0=math.pi-0.94,t1=math.pi+0.94),
+                       fill=stand_l,width=1,joint="curve")
         return (cx,cy)
 
     # ---------- 校门 ----------

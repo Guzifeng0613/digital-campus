@@ -82,10 +82,21 @@ for b in recs:
     x0,y0=g2px(gx,gy); x1,y1=g2px(gx+gw,gy+gh)
     if b["shape"]=="ellipse":
         if b["cat"]=="field":
-            # 田径场：红色塑胶跑道 + 绿色足球场
-            d.ellipse([x0,y0,x1,y1],fill=(184,82,62),outline=(60,40,30),width=2)
-            mxx,myy=(x1-x0)*0.16,(y1-y0)*0.16
-            d.ellipse([x0+mxx,y0+myy,x1-mxx,y1-myy],fill=(96,156,78))
+            if b.get("field")=="blue":
+                # 风雨操场：暖橙跑道 + 绿球场 + 北/西蓝色看台
+                d.ellipse([x0,y0,x1,y1],fill=(214,152,70),outline=(90,70,36),width=2)
+                bw=(x1-x0)*0.10; bh=(y1-y0)*0.10
+                d.rectangle([x0+(x1-x0)*0.22,y0-3,x1-(x1-x0)*0.22,y0+bh*1.1],
+                            fill=(74,152,198),outline=(46,92,126))
+                d.rectangle([x0-3,y0+(y1-y0)*0.18,x0+bw*1.1,y1-(y1-y0)*0.18],
+                            fill=(74,152,198),outline=(46,92,126))
+                mxx,myy=(x1-x0)*0.16,(y1-y0)*0.16
+                d.ellipse([x0+mxx,y0+myy,x1-mxx,y1-myy],fill=(96,156,78))
+            else:
+                # 北操场：红色塑胶跑道 + 绿色足球场
+                d.ellipse([x0,y0,x1,y1],fill=(184,82,62),outline=(60,40,30),width=2)
+                mxx,myy=(x1-x0)*0.16,(y1-y0)*0.16
+                d.ellipse([x0+mxx,y0+myy,x1-mxx,y1-myy],fill=(96,156,78))
         else:
             d.ellipse([x0,y0,x1,y1],fill=col,outline=(50,40,30),width=2)
     else:
