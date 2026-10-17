@@ -47,7 +47,7 @@ STYLE = {
     "FIELD-N":        dict(kind="field"),
     "FIELD-W":        dict(kind="field"),
     "CAN-ZIZHU":      dict(kind="polyblock", wall=(182,84,62),  floors=3),
-    "ENG-TRAIN":      dict(kind="polyblock", wall=(176,92,68),floors=4),
+    "ENG-TRAIN":      dict(kind="terui", wall=(170,78,68),floors=4),
     "GATE-S":         dict(kind="gate",   axis="h"),
     "GATE-E":         dict(kind="gate",   axis="v"),
     "GATE-W":         dict(kind="gate",   axis="v"),
@@ -277,6 +277,17 @@ def render():
                 dr.line([P(0.03,(f+1.0)/floors),P(0.97,(f+1.0)/floors)],
                         fill=(204,200,190),width=2)
             return
+        if winstyle=="vert":
+            # 竖向长条窗：沿墙通高的窄玻璃条（紫竹食堂竖槽窗）
+            n=max(2,units); halfw=0.045/n
+            for i in range(n):
+                uc=(i+0.5)/n
+                dr.polygon([P(uc-halfw,0.10),P(uc+halfw,0.10),
+                            P(uc+halfw,0.90),P(uc-halfw,0.90)],
+                           fill=glass, outline=shade(glass,0.6))
+            for f in range(1,floors):
+                dr.line([P(0,f/floors),P(1,f/floors)],fill=(60,60,64),width=1)
+            return
         if units<=0: return
         ww=0.56; vh=0.50
         for f in range(floors):
@@ -410,36 +421,48 @@ def render():
         c=iso(cx,cy)
         return (c[0]+OX,c[1]+OY-h)
 
-    # 实验群内院：白色钢网格遮阳棚（架空，半透明），四角为官方 px
+    # 实验群内院：灰色铺地庭院 + 架空钢网格遮阳棚（灰色钢框架，非白），四角官方 px
     def draw_lab_canopy(px0,py0,px1,py1):
         gx0=C.px2gx(px0); gy0=C.px2gy(py0)
         gx1=C.px2gx(px1); gy1=C.px2gy(py1)
-        z=FLOOR_H*2.7
         corners=[Tp(gx0,gy0),Tp(gx1,gy0),Tp(gx1,gy1),Tp(gx0,gy1)]
+        # 内院地面（浅灰铺装 + 中央绿化）
+        d.polygon(corners, fill=(188,190,182), outline=(150,152,146))
+        mx=(gx0+gx1)/2; w=(gx1-gx0)*0.20
+        lawn=[Tp(mx-w,gy0+2),Tp(mx+w,gy0+2),Tp(mx+w,gy1-2),Tp(mx-w,gy1-2)]
+        d.polygon(lawn, fill=(116,162,88), outline=(94,138,72))
+        z=FLOOR_H*2.7
         top=[(x,y-z) for x,y in corners]
-        # 极淡的半透明阳光板底（能透见内院）
-        d.polygon(top, fill=(226,232,234,46), outline=(176,182,186,220))
+        # 四角细柱
+        for (x,y) in corners:
+            d.line([(x,y),(x,y-z)],fill=(96,102,110),width=2)
         nx,ny=4,3
-        for i in range(nx+1):
-            t=i/nx
-            p1=(top[0][0]+(top[1][0]-top[0][0])*t, top[0][1]+(top[1][1]-top[0][1])*t)
-            p2=(top[3][0]+(top[2][0]-top[3][0])*t, top[3][1]+(top[2][1]-top[3][1])*t)
-            d.line([p1,p2], fill=(238,242,244,210), width=2)
-        for j in range(ny+1):
-            t=j/ny
-            p1=(top[0][0]+(top[3][0]-top[0][0])*t, top[0][1]+(top[3][1]-top[0][1])*t)
-            p2=(top[1][0]+(top[2][0]-top[1][0])*t, top[1][1]+(top[2][1]-top[1][1])*t)
-            d.line([p1,p2], fill=(238,242,244,210), width=2)
-        # 斜向交叉桁架（每格画 X）
-        def ct(i,j):
-            u=i/nx; v=j/ny
-            w0=(top[0][0]+(top[3][0]-top[0][0])*v, top[0][1]+(top[3][1]-top[0][1])*v)
-            w1=(top[1][0]+(top[2][0]-top[1][0])*v, top[1][1]+(top[2][1]-top[1][1])*v)
-            return (w0[0]+(w1[0]-w0[0])*u, w0[1]+(w1[1]-w0[1])*u)
+        def gnode(u,v):
+            p0=(top[0][0]+(top[3][0]-top[0][0])*v, top[0][1]+(top[3][1]-top[0][1])*v)
+            p1=(top[1][0]+(top[2][0]-top[1][0])*v, top[1][1]+(top[2][1]-top[1][1])*v)
+            return (p0[0]+(p1[0]-p0[0])*u, p0[1]+(p1[1]-p0[1])*u)
+        # 连续浅灰钢网格顶棚板（不透明中性灰，避免半透明发白）
+        d.polygon(top, fill=(204,208,210), outline=(118,124,130))
+        # 边框 + 纵横钢梁
+        d.line(top+[top[0]], fill=(104,110,118), width=3)
+        for i in range(1,nx):
+            d.line([gnode(i/nx,0),gnode(i/nx,1)],fill=(104,110,118),width=2)
+        for j in range(1,ny):
+            d.line([gnode(0,j/ny),gnode(1,j/ny)],fill=(104,110,118),width=2)
+        # 每格 X 钢索桁架
         for i in range(nx):
             for j in range(ny):
-                d.line([ct(i,j),ct(i+1,j+1)],fill=(214,220,224,150),width=1)
-                d.line([ct(i,j+1),ct(i+1,j)],fill=(214,220,224,150),width=1)
+                d.line([gnode(i/nx,j/ny),gnode((i+1)/nx,(j+1)/ny)],fill=(146,152,158),width=1)
+                d.line([gnode(i/nx,(j+1)/ny),gnode((i+1)/nx,j/ny)],fill=(146,152,158),width=1)
+
+    # 东门内圆形环岛（机动车回车道）：沥青环 + 中央绿化
+    def draw_roundabout(px,py,pr):
+        cgx=C.px2gx(px); cgy=C.px2gy(py)
+        rgx=C.px2gx(px+pr)-C.px2gx(px)
+        cx,cy=Tp(cgx,cgy); rx=22*rgx; ry=11*rgx
+        d.ellipse([cx-rx,cy-ry,cx+rx,cy+ry],fill=(146,148,146),outline=(112,114,112),width=2)
+        d.ellipse([cx-rx*0.56,cy-ry*0.56,cx+rx*0.56,cy+ry*0.56],
+                  fill=(116,162,88),outline=(94,138,72))
 
     # ---------- 图书馆：层叠退台 ----------
     def draw_stack(b, st):
@@ -732,14 +755,32 @@ def render():
                     d.line([(pm[0],pm[1]-z0),(pm[0],pm[1]-z1)],
                            fill=add(GLASS_L,10),width=1)
             a=g1
-        # 东南端（a=+rx）斜切转角 + 内凹大灰顶棚台阶入口
-        en=spt(rx-RC*0.2, ry*0.45)
-        d.polygon([(en[0]-16,en[1]),(en[0]+16,en[1]),
-                   (en[0]+22,en[1]-h*0.86),(en[0]-22,en[1]-h*0.86)],
-                  fill=(58,62,68),outline=INK)
-        d.polygon([(en[0]-24,en[1]-h*0.86),(en[0]+24,en[1]-h*0.86),
-                   (en[0]+26,en[1]-h),(en[0]-26,en[1]-h)],
-                  fill=(128,134,142),outline=(96,102,110))
+        # ===== 西南端（等距左端，a=-rx，朝主校门）入口：长立面左端大玻璃 + 宽台阶 =====
+        # 端面弧在等距下侧对相机，宽阔入口落在朝相机的长立面左端
+        ae0=-(rx-RC)+1.0; ae1=ae0+27
+        Aw=spt(ae0,ry); Bw=spt(ae1,ry)
+        zb=h*0.03; zt=h*0.92
+        d.polygon([(Aw[0],Aw[1]-zb),(Bw[0],Bw[1]-zb),(Bw[0],Bw[1]-zt),(Aw[0],Aw[1]-zt)],
+                  fill=(76,128,166),outline=GLASS_DK)
+        for k in range(1,6):
+            t=k/6
+            p=(Aw[0]+(Bw[0]-Aw[0])*t,Aw[1]+(Bw[1]-Aw[1])*t)
+            d.line([(p[0],p[1]-zb),(p[0],p[1]-zt)],fill=add(GLASS_L,12),width=1)
+        # 玻璃顶深灰内凹顶棚（挑檐下方）
+        d.polygon([(Aw[0],Aw[1]-zt),(Bw[0],Bw[1]-zt),(Bw[0],Bw[1]-zt-h*0.08),(Aw[0],Aw[1]-zt-h*0.08)],
+                  fill=(70,76,84),outline=(48,52,58))
+        # 宽台阶：从墙脚向相机（bb>ry）伸出
+        Af=spt(ae0,ry+13); Bf=spt(ae1,ry+13)
+        zplat=h*0.13
+        At=(Aw[0],Aw[1]-zplat); Bt=(Bw[0],Bw[1]-zplat)
+        d.polygon([At,Af,(Aw[0],Aw[1])],fill=(150,106,88),outline=(118,88,72))
+        d.polygon([Bt,Bf,(Bw[0],Bw[1])],fill=(136,96,80),outline=(118,88,72))
+        d.polygon([At,Bt,Bf,Af],fill=(218,202,184),outline=(150,124,104))
+        for k in range(1,13):
+            t=k/13
+            l=(At[0]+(Af[0]-At[0])*t,At[1]+(Af[1]-At[1])*t)
+            r=(Bt[0]+(Bf[0]-Bt[0])*t,Bt[1]+(Bf[1]-Bt[1])*t)
+            d.line([l,r],fill=(150,124,104),width=1)
         # 灰大挑檐平顶（外扩一圈）
         roof=stadium(1.15,h)
         d.polygon(roof,fill=(150,156,164),outline=INK)
@@ -868,8 +909,8 @@ def render():
         roof_col=b.get("roof") or st.get("roof") or ROOF
         pts=as_cw([Tp(x,y) for x,y in gp])
         n=len(pts); uu=edge_units_of(pts)
-        # 横向条窗样式（泰瑞楼等）
-        winstyle = "strip" if b.get("stripwin") else "grid"
+        # 竖向条窗（紫竹）/ 横向条窗（泰瑞）/ 默认方格
+        winstyle = "vert" if b.get("vertwin") else ("strip" if b.get("stripwin") else "grid")
         extrude_poly(d, pts, h, st["wall"], floors=st["floors"],
                      edge_units=uu, glass=GLASS, roof=roof_col,
                      roof_facilities=False, winstyle=winstyle)
@@ -965,6 +1006,48 @@ def render():
                     d.line([p1,p2],fill=(150,122,100),width=1)
                 break
         return (sum(allx)/len(allx), sum(ally)/len(ally))
+
+    # ---------- 泰瑞楼（工程训练中心）：红色陶板大实墙 + 中央通高玻璃中庭 + 窄横窗带 ----------
+    def draw_terui(b, st):
+        gp=b["gpoly"]; h=FLOOR_H*st["floors"]; fl_n=st["floors"]
+        pts=as_cw([Tp(x,y) for x,y in gp]); n=len(pts)
+        TRED=(170,78,68)
+        extrude_poly(d, pts, h, TRED, floors=fl_n, edge_units=[1]*n,
+                     glass=None, roof=(178,170,160), roof_facilities=False)
+        elens=[((pts[(i+1)%n][0]-pts[i][0])**2+(pts[(i+1)%n][1]-pts[i][1])**2)**0.5 for i in range(n)]
+        lmax=max(elens)
+        for i in range(n):
+            A=pts[i]; B=pts[(i+1)%n]
+            if B[0]-A[0] >= -0.5: continue
+            def P(u,v): return (A[0]+(B[0]-A[0])*u, A[1]+(B[1]-A[1])*u - v*h)
+            if elens[i] > lmax*0.7:
+                # 中央通高玻璃中庭（约 3 层）
+                d.polygon([P(0.37,0.04),P(0.63,0.04),P(0.63,0.70),P(0.37,0.70)],
+                          fill=(104,150,176),outline=(52,86,110))
+                for u in (0.455,0.545):
+                    d.line([P(u,0.04),P(u,0.70)],fill=add(GLASS_L,10),width=1)
+                for v in (0.26,0.48):
+                    d.line([P(0.37,v),P(0.63,v)],fill=add(GLASS_L,10),width=1)
+                # 中庭顶部浅灰挑檐
+                d.polygon([P(0.35,0.70),P(0.65,0.70),P(0.67,0.77),P(0.33,0.77)],
+                          fill=(184,182,174),outline=(120,118,110))
+                # 两侧每层窄横窗带（红墙大面为主）
+                for fl in range(fl_n):
+                    v0=0.11+fl*0.205; v1=v0+0.105
+                    for (u0,u1) in ((0.06,0.30),(0.70,0.94)):
+                        d.polygon([P(u0,v0),P(u1,v0),P(u1,v1),P(u0,v1)],
+                                  fill=(96,142,168),outline=(52,84,108))
+                        for u in ((u0+u1)/2-0.05,(u0+u1)/2+0.05):
+                            d.line([P(u,v0),P(u,v1)],fill=add(GLASS_L,8),width=1)
+            else:
+                # 短立面：红色实墙 + 竖向小窗阵列
+                for fl in range(fl_n):
+                    v0=0.13+fl*0.205; v1=v0+0.105
+                    for u in (0.26,0.52,0.78):
+                        d.polygon([P(u-0.055,v0),P(u+0.055,v0),P(u+0.055,v1),P(u-0.055,v1)],
+                                  fill=(96,142,168),outline=(52,84,108))
+        cx=sum(p[0] for p in pts)/n; cy=sum(p[1] for p in pts)/n
+        return (cx,cy-h)
 
     # ---------- 大学生活动中心：单一白色菱形穿孔体（蝴蝶形两翼南连）+ 波浪檐口 ----------
     def draw_act(b, st):
@@ -1118,8 +1201,27 @@ def render():
         a,b=gw/2,gh/2
         cx,cy=Tp(cxg,cyg)
         ground_shadow_ell(cxg,cyg,a,b)
-        def efill(fa,fb,fill,outline=None,ow=2,N=110):
-            pts=epts(cxg,cyg,a,b,fa,fb,N)
+        def gp(ugx,ugy):
+            p=iso(cxg+ugx,cyg+ugy); return (p[0]+OX,p[1]+OY)
+        # 跑道形（直道 + 两端半圆，南北长轴），非纯椭圆
+        def stad_pts(scale,Narc=26):
+            sa=a*scale; sb=b*scale
+            if sb<sa: sb=sa
+            sl=sb-sa
+            raw=[]
+            for i in range(Narc+1):  # 右直道
+                raw.append((sa,-sl+2*sl*i/Narc))
+            for i in range(1,Narc+1):  # 北半圆端（圆心(0,sl)）
+                ang=math.pi*i/Narc
+                raw.append((sa*math.cos(ang),sl+sa*math.sin(ang)))
+            for i in range(1,Narc+1):  # 左直道
+                raw.append((-sa,sl-2*sl*i/Narc))
+            for i in range(1,Narc+1):  # 南半圆端（圆心(0,-sl)）
+                ang=math.pi+math.pi*i/Narc
+                raw.append((sa*math.cos(ang),-sl+sa*math.sin(ang)))
+            return [gp(ux,uy) for ux,uy in raw]
+        def efill(scale,fill,outline=None,ow=2):
+            pts=stad_pts(scale)
             d.polygon(pts,fill=fill)
             if outline:
                 d.line(pts,fill=outline,width=ow,joint="curve")
@@ -1129,18 +1231,17 @@ def render():
             base=(38,80,124); ring=[(58,118,176),(64,126,184),(70,132,190),(74,138,196),(80,144,202)]
         else:
             base=(118,50,42); ring=[(190,74,50),(196,80,54),(200,86,58),(204,92,62),(208,98,66)]
-        efill(1.0,1.0,base)
-        efill(0.975,0.975,(246,244,236))
-        for fa,col in zip([0.965,0.915,0.865,0.815,0.765],ring):
-            efill(fa,fa,col)
-        efill(0.745,0.745,(246,244,236))
-        # 内场草地
-        efill(0.735,0.735,(96,156,78))
+        efill(1.0,base)
+        efill(0.975,(246,244,236))
+        for sc,col in zip([0.965,0.915,0.865,0.815,0.765],ring):
+            efill(sc,col)
+        efill(0.745,(246,244,236))
+        # 内场草地（跑道形）
+        efill(0.735,(96,156,78))
         # 足球场（网格空间内接草地椭圆）
         ag=0.735*a; bg=0.735*b
         hw_g=ag*0.60; hl_g=bg*0.74
-        def fp(ugx,ugy):
-            p=iso(cxg+ugx,cyg+ugy); return (p[0]+OX,p[1]+OY)
+        fp=gp
         cA,cB,cC,cD=fp(-hw_g,-hl_g),fp(hw_g,-hl_g),fp(hw_g,hl_g),fp(-hw_g,hl_g)
         d.line([cA,cB,cC,cD,cA],fill=(252,252,247),width=2)
         d.line([fp(-hw_g,0),fp(hw_g,0)],fill=(252,252,247),width=2)
@@ -1170,9 +1271,10 @@ def render():
                 d.ellipse([x+sx*4-2,y-hp-5,x+sx*4+2,y-hp-1],fill=(240,240,220),outline=(60,66,72))
         # 沿两条长边（南北直道）的整合式阶梯看台（多级踏面+踢面）
         def stand(side):
-            gn=cyg-b*0.58; gs=cyg+b*0.58
-            gn2=cyg-b*0.50; gs2=cyg+b*0.50
-            gi=cxg+side*a*0.98; go=cxg+side*a*1.60
+            sl_=max(b-a, b*0.4)  # 直道段半长
+            gn=cyg-sl_*0.97; gs=cyg+sl_*0.97
+            gn2=cyg-sl_*0.86; gs2=cyg+sl_*0.86
+            gi=cxg+side*a*0.99; go=cxg+side*a*1.62
             Hs=13; N=8
             def gnt(t): return gn+(gn2-gn)*t
             def gst(t): return gs+(gs2-gs)*t
@@ -1224,6 +1326,85 @@ def render():
     # ---------- 校门 ----------
     def draw_gate(b, st):
         gx,gy,gw,gh=b["grid"]
+        if b.get("booth"):
+            # 东门：1层简易道闸门房（非门楼）+ 门外红白道闸横杆
+            hb=FLOOR_H*1.0
+            pts=box_pts(gx,gy,gw,gh)
+            extrude_poly(d, pts, hb, (166,172,178), floors=1,
+                         edge_units=[1,1,1,1], glass=GLASS, roof_facilities=False, lw=2)
+            rx=gx+gw+1.5; z=hb*0.72; n=6
+            for k in range(n):
+                t0=k/n; t1=(k+1)/n
+                p0=Tp(rx,gy+gh*t0); p1=Tp(rx,gy+gh*t1)
+                d.line([(p0[0],p0[1]-z),(p1[0],p1[1]-z)],
+                       fill=(212,74,56) if k%2==0 else (242,242,240), width=4)
+            c=iso(gx+gw/2,gy+gh/2)
+            return (c[0]+OX,c[1]+OY-hb)
+        if b.get("open"):
+            # 南门：敞开式（无门楼）——横卧校名石 + 石后旗杆 + 两侧灰色矮岗亭
+            cxg=gx+gw/2; cyg=gy+gh/2
+            GUARD=(150,154,158)
+            for sgn in (-1,1):
+                bgx=cxg+sgn*gw*0.42-2.2
+                extrude_poly(d, box_pts(bgx,cyg+0.5,4.4,3.6), FLOOR_H*0.9, GUARD,
+                             floors=1, edge_units=[1,1,1,1], glass=GLASS,
+                             roof_facilities=False, lw=1)
+            # 校名石（横卧低矮灰绿景石，无屋顶）
+            sgy=cyg-2.6; spts=box_pts(cxg-2.4,sgy,4.8,1.8); hs=3.8
+            extrude_poly(d, spts, hs, (128,140,120), floors=1,
+                         edge_units=[1,1,1,1], glass=None, parapet=False,
+                         roof_facilities=False, lw=1)
+            s0=Tp(cxg,sgy+0.9)
+            d.rectangle([s0[0]-8,s0[1]-hs-1,s0[0]+8,s0[1]-hs+1], fill=(172,54,46))
+            # 石后轴线旗杆（更北）
+            fx,fy=Tp(cxg,cyg-6.8)
+            d.line([(fx,fy),(fx,fy-36)],fill=(70,74,80),width=2)
+            d.polygon([(fx,fy-36),(fx+8,fy-32),(fx,fy-29)],fill=(192,62,50))
+            c=iso(cxg,cyg)
+            return (c[0]+OX,c[1]+OY)
+        if b.get("maotou"):
+            # 西门：深灰青砖马头墙三退台高门柱 + 矮灰砖玻璃岗亭 + 黑色伸缩门
+            GREY=(102,106,112)
+            pgx=gx+0.5; pgy=gy+1.0; pW=1.7; pD=6.0; H=FLOOR_H*2.7
+            extrude_poly(d, box_pts(pgx,pgy,pW,pD), H, GREY, floors=1,
+                         edge_units=[1,1,1,1], glass=None, parapet=False,
+                         roof_facilities=False, lw=2)
+            # 三级马头墙：沿门柱长轴（gy）南段低、北段高，逐级抬升的阶梯
+            stepD=pD/3.0
+            for k,hs in enumerate([0.16,0.34,0.54]):
+                v0=pgy+(2-k)*stepD
+                kpts=box_pts(pgx, v0, pW, stepD+0.12)
+                extrude_poly(d, kpts, FLOOR_H*hs, add(GREY,10), floors=1,
+                             edge_units=[1,1,1,1], glass=None, parapet=False,
+                             roof_facilities=False, z_base=H, lw=1)
+            # 最高一级（北段）中式盖瓦檐
+            et=Tp(pgx+pW/2,pgy+0.1)
+            d.line([(et[0]-7,et[1]-H-FLOOR_H*0.54),(et[0]+7,et[1]-H-FLOOR_H*0.54)],
+                   fill=(52,54,60),width=3)
+            # 圆形校徽（南墙，白色）
+            em=Tp(pgx+pW/2,pgy+pD)
+            d.ellipse([em[0]-2.6,em[1]-H*0.66-2.6,em[0]+2.6,em[1]-H*0.66+2.6],
+                      fill=(236,236,232),outline=(120,124,128))
+            # 矮玻璃岗亭（南段）
+            extrude_poly(d, box_pts(gx-0.4,pgy+pD+1.2,3.6,2.2), FLOOR_H*0.9, GREY,
+                         floors=1, edge_units=[1,1,1,1], glass=GLASS_L,
+                         roof_facilities=False, lw=1)
+            # 黑色电动伸缩门（门柱东侧横拉栅栏，沿 gx 方向，竖杆+交叉剪叉）
+            gm_y=pgy+pD*0.55; gx0=pgx+pW+0.4; glen=4.0
+            nb=6
+            for k in range(nb+1):
+                bx=gx0+glen*k/nb; p0=Tp(bx,gm_y)
+                d.line([p0,(p0[0],p0[1]-FLOOR_H*0.55)],fill=(40,44,50),width=2)
+            for k in range(nb):
+                a=Tp(gx0+glen*k/nb,gm_y); b=Tp(gx0+glen*(k+1)/nb,gm_y)
+                zt=FLOOR_H*0.55
+                d.line([a,(b[0],b[1]-zt)],fill=(58,62,68),width=1)
+                d.line([(a[0],a[1]-zt),b],fill=(58,62,68),width=1)
+            h0=Tp(gx0,gm_y); h1=Tp(gx0+glen,gm_y)
+            d.line([(h0[0],h0[1]-FLOOR_H*0.55),(h1[0],h1[1]-FLOOR_H*0.55)],
+                   fill=(40,44,50),width=2)
+            c=iso(gx+gw/2,gy+gh/2)
+            return (c[0]+OX,c[1]+OY-H*0.5)
         h=FLOOR_H*2.4
         if st["axis"]=="h":   # 南门：东西向
             pts=box_pts(gx,gy,gw,gh)
@@ -1313,6 +1494,8 @@ def render():
             ctr=draw_lab(b,st)
         elif kind=="yulan":
             ctr=draw_yulan(b,st)
+        elif kind=="terui":
+            ctr=draw_terui(b,st)
         elif kind=="gym":
             ctr=draw_gym(b,st)
         elif kind=="polyblock":
@@ -1325,9 +1508,11 @@ def render():
             ctr=draw_block(b,st)
         centers[b["id"]]=(ctr,b)
 
-    # 实验群两进内院的白色钢网格遮阳棚（架空在三层高度）
+    # 实验群两进内院的灰色钢网格遮阳棚（架空在三层高度）
     draw_lab_canopy(394,539,447,557)   # 北院
     draw_lab_canopy(394,599,447,615)   # 南院
+    # 东门内机动车环岛
+    draw_roundabout(455,640,15)
 
     # ---------- 编号 + 名称（在建筑之上）----------
     for bid,(ctr,b) in centers.items() if globals().get("DRAW_LABELS", True) else ():
