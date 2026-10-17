@@ -335,6 +335,17 @@ def render():
         return [max(1,round(gw/2.5)), max(1,round(gh/2.5)),
                 max(1,round(gw/2.5)), max(1,round(gh/2.5))]
 
+    # 屏幕多边形环绕方向规范化（标准方块为正面积，负面积反转），供所有异形挤出复用
+    def signed_area(qq):
+        m=len(qq)
+        return sum(qq[i][0]*qq[(i+1)%m][1]-qq[(i+1)%m][0]*qq[i][1] for i in range(m))
+    def as_cw(qq):
+        return qq[::-1] if signed_area(qq)<0 else qq
+    def edge_units_of(qq, k=16):
+        m=len(qq)
+        return [max(1,round(math.hypot(qq[(i+1)%m][0]-qq[i][0],
+                qq[(i+1)%m][1]-qq[i][1])/k)) for i in range(m)]
+
     # ---------- 标准盒体 ----------
     def draw_block(b, st, ovs=None):
         gx,gy,gw,gh=b["grid"]
@@ -470,41 +481,51 @@ def render():
 
     # ---------- 一教：弯月双弧翼 + 中央通透大拱门（凸朝南）----------
     def draw_crescent(b, st):
-        # 一教：A/B座两扇弧形翼（轮廓取自官方平面分割）+ 北连廊 + 中央南北向玻璃主楼
-        # 几何用官方平面 px 坐标（x=东 y=南）
+        # 一教（据官网航拍/廊桥照片+官方平面）：凸面朝南的弯月，中央南北向通道
+        # 把它切成 A(西)、B(东) 两座弧形翼；通道上方由两个一字型廊桥连接——
+        # 北端为架空玻璃连廊（X桁架），南端为高出的门形廊桥（白顶盖+格栅+玻璃层）。
+        # 几何用官方平面 px（x=东 y=南）。
         h=FLOOR_H*st["floors"]
         def P(x,y): return Tp(C.px2gx(x), C.px2gy(y))
-        W_A=[(307,657),(309,665),(320,677),(325,678),(333,684),(354,691),(354,649),(318,647)]
-        W_B=[(355,691),(376,691),(394,687),(409,679),(418,670),(419,666),
-             (408,652),(370,650),(370,653),(365,656),(360,653),(360,649),(355,649)]
-        def pp(pts): return [P(x,y) for x,y in pts]
-        # 庭院铺装（两扇叶之间，南开口）
-        d.polygon([P(352,656),P(353,698),P(378,698),P(364,656)],
-                  fill=(202,192,172), outline=(178,168,148))
-        # 挤出两扇弧翼
+        # 中央缺口通道：x354-369（南北向，南开口）
+        GAP_L,GAP_R=354,369
+        # A座（西弧翼）、B座（东弧翼），外轮廓取自官方平面颜色分割
+        W_A=[(354,648),(318,647),(306,658),(308,664),(321,678),(326,679),(333,685),(354,690)]
+        W_B=[(369,648),(409,652),(416,661),(424,661),(424,672),(416,672),(409,679),
+             (395,687),(378,691),(369,690)]
+        # 两翼内院（弯月楼带围合的内庭院，轮廓取自颜色分割）
+        Y_A=[(318,656),(319,663),(331,673),(339,677),(347,676),(346,657)]
+        Y_B=[(377,678),(387,679),(393,677),(405,669),(407,661),(380,660),(377,670)]
+        # 中央通道 + 两翼内院地面铺装（先于楼体画在地面，浅色庭院）
+        d.polygon([P(353,646),P(370,646),P(370,696),P(353,696)],
+                  fill=(206,196,176), outline=(178,168,148))
+        for ypts in (Y_A,Y_B):
+            d.polygon([P(x,y) for x,y in ypts], fill=(200,194,178), outline=(182,174,156))
+        # 挤出 A/B 两座弧翼
         for pts in (W_A,W_B):
-            q=pp(pts)
+            q=as_cw([P(x,y) for x,y in pts])
             extrude_poly(d, q, h, st["wall"], floors=st["floors"],
-                         edge_units=[1]*len(q), glass=GLASS, roof_facilities=False)
-        # 外弧可见立面水平条窗（西翼前6点、东翼索引1-6为外弧）
-        for pts,ar in ((W_A,range(0,6)),(W_B,range(1,6))):
-            q=pp(pts)
-            for i in ar:
-                A=q[i]; B=q[i+1]
-                if B[0]-A[0] >= -0.5: continue
-                win=(102,134,156) if (B[1]-A[1])>0 else (122,152,172)
-                for f in range(1,st["floors"]):
-                    d.line([(A[0],A[1]-h*f/st["floors"]),(B[0],B[1]-h*f/st["floors"])],
-                           fill=win, width=3)
-        # 北连廊（横跨两扇叶北端，y647-654，红墙平顶）
-        link=[P(318,645),P(408,645),P(408,656),P(318,656)]
-        extrude_poly(d, link, h*0.98, st["wall"], floors=st["floors"],
-                     edge_units=[8,2,8,2], glass=GLASS, roof_facilities=False)
-        # 中央南北向玻璃主楼（白色，北端略突出、向南伸入庭院）
-        main=[P(346,634),P(364,634),P(364,699),P(346,699)]
-        extrude_poly(d, main, h*1.02, (226,224,218), floors=st["floors"],
-                     edge_units=[2,5,2,5], glass=GLASS, parapet=True, lw=2,
-                     roof_facilities=False)
+                         edge_units=edge_units_of(q), glass=GLASS, roof_facilities=False)
+        # 屋顶上画出内院（浅白采光/庭院下沉区 + 深色内侧墙），形成环形楼带
+        for ypts in (Y_A,Y_B):
+            q=[P(x,y) for x,y in ypts]
+            top=[(x,y-h) for x,y in q]
+            d.polygon(top, fill=(216,216,208), outline=(112,108,100))
+        # 北廊桥：架空玻璃连廊（缺口北端，X桁架通透，下部架空）
+        nbr=[P(354,646),P(369,646),P(369,659),P(354,659)]
+        extrude_poly(d,nbr,h*0.44,(150,186,202),floors=2,edge_units=[1,1,1,1],
+                     glass=GLASS_L,parapet=False,lw=2,z_base=h*0.40,
+                     roof=(186,210,220),roof_facilities=False)
+        # 南廊桥：高大门楼（南开口）——通透玻璃层 + 高出两翼的白色实体顶盖
+        sbr=[P(352,678),P(371,678),P(371,691),P(352,691)]
+        # 下部玻璃层（约3-4层，门洞上方通透）
+        extrude_poly(d,sbr,h*0.32,(150,186,202),floors=1,edge_units=[1,1,1,1],
+                     glass=GLASS_L,parapet=False,lw=2,z_base=h*0.54,
+                     roof=(186,210,220),roof_facilities=False)
+        # 白色实体顶盖（格栅门楼，明显高出两翼屋顶）
+        extrude_poly(d,sbr,h*0.28,(226,224,218),floors=1,edge_units=[1,1,1,1],
+                     glass=None,parapet=True,lw=3,z_base=h*0.90,
+                     roof=(228,228,222),roof_facilities=False)
         # 北环路南侧、一教北缘外的低矮小横杠（官方图黑箭头所指的小矩形附楼）
         bx0,by0,bwp,bdp=347,618,26,16
         bar=[P(bx0,by0),P(bx0+bwp,by0),P(bx0+bwp,by0+bdp),P(bx0,by0+bdp)]
@@ -514,7 +535,7 @@ def render():
                      edge_units=[2,2,2,2], glass=GLASS, parapet=True, lw=2,
                      roof_facilities=False)
         d.polygon([(x,y-bh) for x,y in bar], fill=(188,214,232),outline=GLASS_DK)
-        c=iso(C.px2gx(355), C.px2gy(672))
+        c=iso(C.px2gx(365), C.px2gy(668))
         return (c[0]+OX,c[1]+OY-h)
 
     # ---------- 体育馆：旋转胶囊（圆角矩形大跨）+ 平顶红墙 ----------
@@ -745,16 +766,6 @@ def render():
         return (cx,cy-h)
 
     # ---------- 通用：倾斜矩形（泰瑞楼，poly 平面）----------
-    def signed_area(qq):
-        m=len(qq)
-        return sum(qq[i][0]*qq[(i+1)%m][1]-qq[(i+1)%m][0]*qq[i][1] for i in range(m))
-    def as_cw(qq):
-        return qq[::-1] if signed_area(qq)<0 else qq
-    def edge_units_of(qq, k=16):
-        m=len(qq)
-        return [max(1,round(math.hypot(qq[(i+1)%m][0]-qq[i][0],
-                qq[(i+1)%m][1]-qq[i][1])/k)) for i in range(m)]
-
     def draw_polyblock(b, st):
         gp=b["gpoly"]; h=FLOOR_H*st["floors"]
         pts=as_cw([Tp(x,y) for x,y in gp])
