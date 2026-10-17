@@ -64,6 +64,13 @@
   #info .close { position:absolute; top:10px; right:12px; cursor:pointer; font-size:20px; color:#dce8ff; line-height:1; }
   #hint { position:fixed; bottom:16px; right:16px; z-index:10; font-size:12px; color:#7f93b8;
     background:rgba(18,26,38,.6); padding:6px 10px; border-radius:8px; }
+  .goto-btn { margin-top:12px; width:100%; padding:9px 0; border-radius:9px; cursor:pointer;
+    font-size:13px; color:#fff; background:#2d6cdf; border:1px solid #6ea8ff; transition:background .15s; }
+  .goto-btn:hover { background:#3a7ef0; }
+  #navTip { position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(8px); z-index:15;
+    font-size:13px; color:#dce8ff; background:rgba(18,26,38,.92); border:1px solid rgba(120,170,255,.3);
+    padding:8px 18px; border-radius:20px; opacity:0; pointer-events:none; transition:all .2s; }
+  #navTip.show { opacity:1; transform:translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
@@ -88,7 +95,8 @@
 <div class="hud" id="help">
   <div><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> / 方向键 <b>移动角色</b></div>
   <div>拖拽 <b>平移地图</b> · 滚轮 <b>缩放</b></div>
-  <div>点击建筑 <b>查看点位</b></div>
+  <div>点击建筑 <b>查看点位</b>，点「前往这里」<b>自动寻路</b></div>
+  <div>点击空地 <b>自动走过去</b> · 放大显示<b>建筑名</b></div>
 </div>
 <div id="hint"></div>
 
@@ -99,8 +107,11 @@
   <div class="body">
     <span class="tag" id="iTag"></span>
     <div id="iDesc"></div>
+    <button class="goto-btn" id="btnGoto">前往这里</button>
   </div>
 </div>
+
+<div id="navTip"></div>
 
 <script src="js/data.js"></script>
 <script src="js/main.js"></script>

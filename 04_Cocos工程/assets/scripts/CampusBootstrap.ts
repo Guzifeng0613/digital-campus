@@ -6,7 +6,8 @@ import {
 import { META, BUILDINGS, GROUP_CN, CampusBuilding } from './CampusData';
 import {
   GROUND_W, GROUND_H, gridToLocal, imageToLocal, localToImage, imageToGrid,
-  isBlocked, fitZoom, diamondCenter
+  gridToImage, isBlocked, fitZoom, diamondCenter,
+  findPath, nearestOpenGrid, pathToBuilding
 } from './IsoMath';
 
 const { ccclass } = _decorator;
@@ -18,6 +19,7 @@ export class CampusBootstrap extends Component {
   private canvas!: Node;
   private camera!: Camera;
   private content!: Node;
+  private groundNode!: Node;
   private player!: Node;
   private pg!: Graphics;                       // 代码绘制小人（帧加载失败时的兜底）
   private playerSprite: Sprite | null = null; // 像素角色序列帧
@@ -32,6 +34,20 @@ export class CampusBootstrap extends Component {
   private facing = 'down';
   private moving = false;
   private buildingNodes: { b: CampusBuilding; node: Node }[] = [];
+
+  // 自动寻路
+  private navPath: Vec2[] | null = null;          // 图像世界坐标路径点
+  private navName = '';
+  private navStuck = 0;
+  private elapsed = 0;
+  private navTipUntil = -1;
+  private currentBuilding: CampusBuilding | null = null;
+  private pathGfx: Graphics | null = null;
+  private navTip: Label | null = null;
+
+  // 建筑名标签
+  private labelNodes: { b: CampusBuilding; root: Node; label: Label }[] = [];
+  private readonly LABEL_MIN_ZOOM = 0.3;
 
   // 触摸拖拽
   private dragging = false;
@@ -132,6 +148,14 @@ export class CampusBootstrap extends Component {
     gNode.setPosition(0, 0, 0);
     gNode.getComponent(Sprite)!.sizeMode = Sprite.SizeMode.CUSTOM;
     this.content.addChild(gNode);
+    this.groundNode = gNode;
+
+    // 寻路路径层（地面之上；建筑/角色按深度排序时会盖在其上）
+    const pathNode = new Node('NavPath');
+    pathNode.layer = UI;
+    pathNode.addComponent(UITransform);
+    this.pathGfx = pathNode.addComponent(Graphics);
+    this.content.addChild(pathNode);
 
     // 建筑（并行加载，单个失败不阻断）
     console.log('[数字校园] 加载 ' + BUILDINGS.length + ' 栋建筑资源…');
@@ -162,7 +186,50 @@ export class CampusBootstrap extends Component {
       console.warn('[数字校园] 仅加载 ' + this.buildingNodes.length + '/' + BUILDINGS.length +
         ' 栋，请检查 assets/resources/sprites 下图片是否齐全、文件夹名是否为小写 resources');
     }
+    this.buildLabels();
     this.sortSprites();
+  }
+
+  // ---------- 建筑名标签（canvas 层，字号恒定；放大到阈值后显示） ----------
+  private buildLabels() {
+    for (const b of BUILDINGS) {
+      const root = new Node('Label_' + b.id);
+      root.layer = UI;
+      const w = b.name.length * 17 + 20;
+      root.addComponent(UITransform).setContentSize(w, 26);
+      const bg = root.addComponent(Graphics);
+      bg.fillColor = new Color(15, 22, 34, 184);
+      bg.roundRect(-w / 2, -13, w, 26, 6); bg.fill();
+      bg.strokeColor = new Color(120, 170, 255, 90); bg.lineWidth = 1; bg.stroke();
+      const ln = new Node('T');
+      ln.layer = UI;
+      ln.addComponent(UITransform).setContentSize(w, 26);
+      const l = ln.addComponent(Label);
+      l.string = b.name; l.fontSize = 16; l.lineHeight = 20;
+      l.color = new Color(234, 242, 255);
+      l.horizontalAlign = Label.HorizontalAlign.CENTER;
+      l.verticalAlign = Label.VerticalAlign.CENTER;
+      root.addChild(ln);
+      root.active = false;
+      this.canvas.addChild(root);
+      this.labelNodes.push({ b, root, label: l });
+    }
+  }
+  private updateLabels() {
+    const show = this.zoom >= this.LABEL_MIN_ZOOM;
+    const cp = this.content.position;
+    const vs = this.viewSize();
+    for (const { b, root } of this.labelNodes) {
+      if (!show) { if (root.active) root.active = false; continue; }
+      const [x0, y0, bw] = b.bbox;
+      const top = imageToLocal(b.paste[0], b.paste[1]);   // sprite 左上角（锚点 0,1）
+      const ux = (top.x + bw * b.scale / 2) * this.zoom + cp.x;
+      const uy = top.y * this.zoom + cp.y + 14;
+      if (ux < -vs.x / 2 - 80 || ux > vs.x / 2 + 80 ||
+          uy < -vs.y / 2 - 30 || uy > vs.y / 2 + 30) { root.active = false; continue; }
+      root.active = true;
+      root.setPosition(ux, uy, 0);
+    }
   }
 
   private makeSpriteNode(sf: SpriteFrame, name: string): Node {
@@ -279,7 +346,7 @@ export class CampusBootstrap extends Component {
     this.player.setScale(mirror ? -1 : 1, 1, 1);
   }
 
-  // ---------- 深度排序（地面在最底） ----------
+  // ---------- 深度排序（地面→路径→建筑/角色） ----------
   private sortSprites() {
     const arr = this.buildingNodes.map(x => ({ depth: x.b.depth, node: x.node }));
     if (this.player) {
@@ -287,7 +354,10 @@ export class CampusBootstrap extends Component {
       arr.push({ depth: gi.gx + gi.gy, node: this.player });
     }
     arr.sort((a, b) => a.depth - b.depth);
-    arr.forEach((it, i) => it.node.setSiblingIndex(i + 1));
+    const ordered: Node[] = arr.map(x => x.node);
+    const layers = [this.groundNode, this.pathGfx ? this.pathGfx.node : null, ...ordered].filter(Boolean) as Node[];
+    // 从最大索引往 0 设置，避免前序插入影响后续位置
+    for (let i = layers.length - 1; i >= 0; i--) layers[i].setSiblingIndex(i);
   }
 
   // ---------- 视图 ----------
@@ -368,22 +438,87 @@ export class CampusBootstrap extends Component {
       const [gx, gy, gw, gh] = b.grid;
       if (g.gx >= gx && g.gx <= gx + gw && g.gy >= gy && g.gy <= gy + gh) { this.showInfo(b); return; }
     }
+    // 点空地：自动寻路
+    this.navigateToPoint(g.gx, g.gy);
+  }
+
+  // ---------- 自动寻路 ----------
+  private setNavTip(text: string, autoHide: boolean) {
+    if (!this.navTip) return;
+    this.navTip.string = text;
+    this.navTip.node.active = true;
+    this.navTipUntil = autoHide ? this.elapsed + 1.8 : -1;
+  }
+  private setNavPath(gridPath: {gx:number;gy:number}[] | null, name: string | null) {
+    if (!gridPath || gridPath.length < 2) {
+      this.setNavTip(gridPath ? '已在目标附近' : '找不到可达路径', true);
+      return;
+    }
+    this.navPath = gridPath.map(g => {
+      const p = gridToImage(g.gx, g.gy);
+      return new Vec2(p.x, p.y);
+    });
+    this.navName = name || '';
+    this.navStuck = 0;
+    this.follow = true; this.updateFollowBtn();
+    this.setNavTip(name ? '正在前往：' + name : '自动寻路中', false);
+  }
+  private navigateToPoint(gx: number, gy: number) {
+    const pg = imageToGrid(this.playerImg.x, this.playerImg.y);
+    const t = nearestOpenGrid(gx, gy, pg.gx, pg.gy, BUILDINGS);
+    if (!t) { this.setNavTip('无法到达那里', true); return; }
+    this.setNavPath(findPath(pg, t, BUILDINGS), null);
+  }
+  private navigateToBuilding(b: CampusBuilding) {
+    const pg = imageToGrid(this.playerImg.x, this.playerImg.y);
+    this.setNavPath(pathToBuilding(b, pg.gx, pg.gy, BUILDINGS), b.name);
+  }
+
+  private drawPath() {
+    const g = this.pathGfx;
+    if (!g) return;
+    g.clear();
+    if (!this.navPath || !this.navPath.length) return;
+    const pts = [new Vec2(this.playerImg.x, this.playerImg.y), ...this.navPath];
+    const loc = pts.map(p => imageToLocal(p.x, p.y));
+    const lw = 4 / Math.max(this.zoom, 0.05);
+    g.strokeColor = new Color(91, 155, 255, 200);
+    g.lineWidth = lw;
+    g.lineJoin = Graphics.LineJoin.ROUND;
+    // 虚线：交替短划
+    for (let i = 0; i < loc.length - 1; i++) {
+      if (i % 2 === 0) {
+        g.moveTo(loc[i].x, loc[i].y);
+        g.lineTo(loc[i + 1].x, loc[i + 1].y);
+      }
+    }
+    g.stroke();
+    const end = loc[loc.length - 1];
+    const r = 8 / Math.max(this.zoom, 0.05);
+    g.fillColor = new Color(45, 108, 223, 240);
+    g.circle(end.x, end.y, r); g.fill();
+    g.strokeColor = new Color(255, 255, 255, 230); g.lineWidth = Math.max(1, 2 / Math.max(this.zoom, 0.05));
+    g.circle(end.x, end.y, r); g.stroke();
   }
 
   // ---------- 玩家移动 ----------
   update(dt: number) {
     if (!this.player) return;
+    this.elapsed += dt;
     let dx = 0, dy = 0;
     if (this.keys.has(KeyCode.KEY_W) || this.keys.has(KeyCode.ARROW_UP)) dy -= 1;
     if (this.keys.has(KeyCode.KEY_S) || this.keys.has(KeyCode.ARROW_DOWN)) dy += 1;
     if (this.keys.has(KeyCode.KEY_A) || this.keys.has(KeyCode.ARROW_LEFT)) dx -= 1;
     if (this.keys.has(KeyCode.KEY_D) || this.keys.has(KeyCode.ARROW_RIGHT)) dx += 1;
-    this.moving = dx !== 0 || dy !== 0;
-    if (this.moving) {
+    const manual = dx !== 0 || dy !== 0;
+    if (manual && this.navPath) { this.navPath = null; this.navName = ''; if (this.navTip) this.navTip.node.active = false; }
+
+    if (manual) {
       const len = Math.hypot(dx, dy) || 1;
       dx /= len; dy /= len;
       if (Math.abs(dx) > Math.abs(dy)) this.facing = dx > 0 ? 'right' : 'left';
       else this.facing = dy > 0 ? 'down' : 'up';
+      this.moving = true;
       const v = 300 * dt;
       let nx = this.playerImg.x + dx * v;
       let ng = imageToGrid(nx, this.playerImg.y);
@@ -393,11 +528,55 @@ export class CampusBootstrap extends Component {
       if (!isBlocked(ng.gx, ng.gy, BUILDINGS)) this.playerImg.y = ny;
       this.phase += dt * 9;
       this.follow = true; this.updateFollowBtn();
+    } else if (this.navPath && this.navPath.length) {
+      const tgt = this.navPath[0];
+      const ddx = tgt.x - this.playerImg.x, ddy = tgt.y - this.playerImg.y;
+      const dist = Math.hypot(ddx, ddy);
+      const R = 12;
+      if (dist < R) {
+        this.navPath.shift(); this.navStuck = 0;
+        if (!this.navPath.length) {
+          this.navPath = null; this.moving = false;
+          this.setNavTip(this.navName ? '已到达：' + this.navName : '已到达', true);
+          this.navName = '';
+        }
+      } else {
+        this.moving = true;
+        const ux = ddx / dist, uy = ddy / dist;
+        if (Math.abs(ux) > Math.abs(uy)) this.facing = ux > 0 ? 'right' : 'left';
+        else this.facing = uy > 0 ? 'down' : 'up';
+        const v = Math.min(300 * dt, dist);
+        const ox = this.playerImg.x, oy = this.playerImg.y;
+        const nx = this.playerImg.x + ux * v, ny = this.playerImg.y + uy * v;
+        const gAll = imageToGrid(nx, ny);
+        if (!isBlocked(gAll.gx, gAll.gy, BUILDINGS)) { this.playerImg.x = nx; this.playerImg.y = ny; }
+        else {
+          const gx = imageToGrid(nx, this.playerImg.y);
+          if (!isBlocked(gx.gx, gx.gy, BUILDINGS)) this.playerImg.x = nx;
+          const gy = imageToGrid(this.playerImg.x, ny);
+          if (!isBlocked(gy.gx, gy.gy, BUILDINGS)) this.playerImg.y = ny;
+        }
+        if (Math.hypot(this.playerImg.x - ox, this.playerImg.y - oy) < v * 0.25) {
+          this.navStuck++;
+          if (this.navStuck > 10) { this.navPath.shift(); this.navStuck = 0; }
+        } else this.navStuck = 0;
+        this.phase += dt * 9;
+        this.follow = true; this.updateFollowBtn();
+      }
+    } else {
+      this.moving = false;
+      this.navStuck = 0;
     }
+
     const lp = imageToLocal(this.playerImg.x, this.playerImg.y);
     this.player.setPosition(lp.x, lp.y, 0);
     this.updatePlayerFrame();
+    this.drawPath();
+    this.updateLabels();
     this.sortSprites();
+    if (this.navTip && this.navTipUntil > 0 && this.elapsed > this.navTipUntil) {
+      this.navTip.node.active = false; this.navTipUntil = -1;
+    }
     if (this.follow) {
       const vs = this.viewSize();
       this.content.setPosition(-lp.x * this.zoom, -lp.y * this.zoom - 0.12 * vs.y, 0);
@@ -467,6 +646,38 @@ export class CampusBootstrap extends Component {
     close.addComponent(Button);
     close.on(Button.EventType.CLICK, () => { this.panel.active = false; }, this);
     panel.addChild(close);
+    // 前往这里
+    const gotoBtn = new Node('GotoBtn'); gotoBtn.layer = UI;
+    gotoBtn.addComponent(UITransform).setContentSize(200, 38);
+    this.fillRound(gotoBtn, 200, 38, new Color(45, 108, 223, 255), 8);
+    const gln = new Node('L'); gln.layer = UI; gln.addComponent(UITransform);
+    const gl = gln.addComponent(Label); gl.string = '前往这里'; gl.fontSize = 18; gl.lineHeight = 22;
+    gl.color = new Color(255, 255, 255);
+    gotoBtn.addChild(gln);
+    gotoBtn.addComponent(Button);
+    gotoBtn.on(Button.EventType.CLICK, () => {
+      if (this.currentBuilding) this.navigateToBuilding(this.currentBuilding);
+    }, this);
+    gotoBtn.setPosition(0, -122, 0);
+    panel.addChild(gotoBtn);
+
+    // 寻路提示（底部居中）
+    const tip = new Node('NavTip'); tip.layer = UI;
+    tip.addComponent(UITransform).setContentSize(320, 40);
+    const tbg = tip.addComponent(Graphics);
+    tbg.fillColor = new Color(18, 26, 38, 235);
+    tbg.roundRect(-160, -20, 320, 40, 20); tbg.fill();
+    tbg.strokeColor = new Color(120, 170, 255, 80); tbg.lineWidth = 1; tbg.stroke();
+    const tln = new Node('T'); tln.layer = UI; tln.addComponent(UITransform).setContentSize(320, 40);
+    const tl = tln.addComponent(Label); tl.fontSize = 18; tl.lineHeight = 22;
+    tl.color = new Color(220, 232, 255);
+    tl.horizontalAlign = Label.HorizontalAlign.CENTER;
+    tl.verticalAlign = Label.VerticalAlign.CENTER;
+    tip.addChild(tln);
+    tip.setPosition(0, -vs.y / 2 + 56, 0);
+    tip.active = false;
+    this.canvas.addChild(tip);
+    this.navTip = tl;
   }
   private panelUIs: { no?: Label; name?: Label; tag?: Label; desc?: Label } = {};
   private updateFollowBtn() {
@@ -475,6 +686,7 @@ export class CampusBootstrap extends Component {
       this.follow ? new Color(45, 108, 223, 255) : new Color(40, 58, 88, 240), 8);
   }
   private showInfo(b: CampusBuilding) {
+    this.currentBuilding = b;
     this.panel.active = true;
     this.panelUIs.no!.string = '点位 ' + String(b.no).padStart(2, '0') + ' · ' + b.id;
     this.panelUIs.name!.string = b.name;
