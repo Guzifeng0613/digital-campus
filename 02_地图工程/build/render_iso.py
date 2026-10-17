@@ -39,9 +39,9 @@ def add(c, d): return tuple(max(0,min(255,v+d)) for v in c)
 STYLE = {
     "TEACH-1":        dict(kind="crescent", wall=(176,78,58),  floors=5),
     "TEACH-2":        dict(kind="polyblock", wall=(176,78,58),  floors=5),
-    "LIB":            dict(kind="libL",   wall=(172,74,54),  floors=6),
+    "LIB":            dict(kind="polyblock",   wall=(172,74,54),  floors=6),
     "WENLI":          dict(kind="polyblock", wall=(112,142,168),floors=5),   # 文科楼（在建，官方图蓝）
-    "ACT":            dict(kind="wave",   wall=(226,224,216),floors=3),
+    "ACT":            dict(kind="act",   wall=(226,224,216),floors=3),
     "CAN-YULAN":      dict(kind="polyblock", wall=(138,158,176),floors=3),   # 玉兰食堂（在建，蓝）
     "GYM":            dict(kind="gymbox",wall=(156,66,50),floors=4),
     "FIELD-N":        dict(kind="field"),
@@ -470,67 +470,51 @@ def render():
 
     # ---------- 一教：弯月双弧翼 + 中央通透大拱门（凸朝南）----------
     def draw_crescent(b, st):
-        gx,gy,gw,gh=b["grid"]; h=FLOOR_H*st["floors"]
-        ocx=gx+gw/2; ocy=gy
-        Rx=gw/2; Ry=gh
-        dth=max(4.0, gh*0.44)              # 弯月条带厚度（南北网格）
-        Rix=Rx-dth; Riy=Ry-dth
-        gap=0.27                           # 中央拱门缺口（弧度，绕最南点 π/2）
-        tL=math.pi/2+gap; tR=math.pi/2-gap # 西/东拱门断面（θ∈[0,π] 凸朝南）
-        N=28
-        def ring_pts(th0,th1,outer):
-            Rx_=Rx if outer else Rix; Ry_=Ry if outer else Riy
-            ts=[th0+(th1-th0)*i/N for i in range(N+1)]
-            return [Tp(ocx+Rx_*math.cos(t), ocy+Ry_*math.sin(t)) for t in ts]
-        # 西翼（外弧 西端π→最南tL）；东翼（外弧 东端0→最南tR），保证外弧屏幕 x 递减→画墙
-        wingL=ring_pts(math.pi,tL,True)+ring_pts(tL,math.pi,False)
-        wingR=ring_pts(0,tR,True)+ring_pts(tR,0,False)
-        # 拱门内院铺装（缺口内弧→向北扇形）
-        yard=ring_pts(tR,tL,False)+[Tp(ocx,gy-gh*0.18)]
-        d.polygon(yard, fill=(200,190,170), outline=(178,168,148))
-        # 挤出两翼（红墙实墙，缺口断面为拱门柱；外弧窗后单独加）
-        for wing in (wingL,wingR):
-            uu=[max(1,round(len(wing)/24))]*len(wing)
-            extrude_poly(d, wing, h, st["wall"], floors=st["floors"],
-                         edge_units=uu, glass=None, roof_facilities=False)
-        # 两翼外弧（可见南弧）水平条窗 + 竖向格栅（只画在已立墙的边）
-        for wing in (wingL,wingR):
-            half=len(wing)//2
-            arc=wing[:half+1]
-            for i in range(len(arc)-1):
-                A=arc[i]; B=arc[i+1]
+        # 一教：A/B座两扇弧形翼（轮廓取自官方平面分割）+ 北连廊 + 中央南北向玻璃主楼
+        # 几何用官方平面 px 坐标（x=东 y=南）
+        h=FLOOR_H*st["floors"]
+        def P(x,y): return Tp(C.px2gx(x), C.px2gy(y))
+        W_A=[(307,657),(309,665),(320,677),(325,678),(333,684),(354,691),(354,649),(318,647)]
+        W_B=[(355,691),(376,691),(394,687),(409,679),(418,670),(419,666),
+             (408,652),(370,650),(370,653),(365,656),(360,653),(360,649),(355,649)]
+        def pp(pts): return [P(x,y) for x,y in pts]
+        # 庭院铺装（两扇叶之间，南开口）
+        d.polygon([P(352,656),P(353,698),P(378,698),P(364,656)],
+                  fill=(202,192,172), outline=(178,168,148))
+        # 挤出两扇弧翼
+        for pts in (W_A,W_B):
+            q=pp(pts)
+            extrude_poly(d, q, h, st["wall"], floors=st["floors"],
+                         edge_units=[1]*len(q), glass=GLASS, roof_facilities=False)
+        # 外弧可见立面水平条窗（西翼前6点、东翼索引1-6为外弧）
+        for pts,ar in ((W_A,range(0,6)),(W_B,range(1,6))):
+            q=pp(pts)
+            for i in ar:
+                A=q[i]; B=q[i+1]
                 if B[0]-A[0] >= -0.5: continue
-                ey=B[1]-A[1]
-                win=(102,134,156) if ey>0 else (122,152,172)
+                win=(102,134,156) if (B[1]-A[1])>0 else (122,152,172)
                 for f in range(1,st["floors"]):
-                    v=f/st["floors"]
-                    d.line([(A[0],A[1]-h*v),(B[0],B[1]-h*v)], fill=win, width=3)
-                d.line([A,(A[0],A[1]-h*0.94)], fill=(108,54,42), width=1)
-        # 中央架空连廊（不落地，拱门上方，薄横梁，与两翼同色）
-        link=ring_pts(tR,tL,True)+ring_pts(tL,tR,False)
-        zb=h*0.80
-        d.polygon(link, fill=(188,178,158))  # 门洞内铺装（通道，非深墙）
-        extrude_poly(d, link, h*0.24, add(st["wall"],12), floors=st["floors"],
-                     edge_units=[2]*len(link), glass=GLASS,
-                     parapet=True, lw=3, z_base=zb, roof_facilities=False)
-        # 拱门两根立柱（断面强调，落到地面）
-        for tt in (tL,tR):
-            po=Tp(ocx+Rx*math.cos(tt), ocy+Ry*math.sin(tt))
-            pi_=Tp(ocx+Rix*math.cos(tt), ocy+Riy*math.sin(tt))
-            d.line([po,(po[0],po[1]-zb)], fill=(104,50,38), width=8)
-            d.line([pi_,(pi_[0],pi_[1]-zb)], fill=(104,50,38), width=8)
-        # 弯月北缘外、北环路南侧的低矮小横杠（官方图黑箭头所指的小矩形附楼）
-        bx0,by0,bwp,bdp=350,620,25,16
-        gx0=C.px2gx(bx0); gx1=C.px2gx(bx0+bwp)
-        gy0=C.px2gy(by0); gy1=C.px2gy(by0+bdp)
-        bar=[Tp(gx0,gy0),Tp(gx1,gy0),Tp(gx1,gy1),Tp(gx0,gy1)]
+                    d.line([(A[0],A[1]-h*f/st["floors"]),(B[0],B[1]-h*f/st["floors"])],
+                           fill=win, width=3)
+        # 北连廊（横跨两扇叶北端，y647-654，红墙平顶）
+        link=[P(318,645),P(408,645),P(408,656),P(318,656)]
+        extrude_poly(d, link, h*0.98, st["wall"], floors=st["floors"],
+                     edge_units=[8,2,8,2], glass=GLASS, roof_facilities=False)
+        # 中央南北向玻璃主楼（白色，北端略突出、向南伸入庭院）
+        main=[P(346,634),P(364,634),P(364,699),P(346,699)]
+        extrude_poly(d, main, h*1.02, (226,224,218), floors=st["floors"],
+                     edge_units=[2,5,2,5], glass=GLASS, parapet=True, lw=2,
+                     roof_facilities=False)
+        # 北环路南侧、一教北缘外的低矮小横杠（官方图黑箭头所指的小矩形附楼）
+        bx0,by0,bwp,bdp=347,618,26,16
+        bar=[P(bx0,by0),P(bx0+bwp,by0),P(bx0+bwp,by0+bdp),P(bx0,by0+bdp)]
         ground_shadow(bar)
-        bh=h*0.55
+        bh=h*0.52
         extrude_poly(d, bar, bh, add(st["wall"],12), floors=3,
                      edge_units=[2,2,2,2], glass=GLASS, parapet=True, lw=2,
                      roof_facilities=False)
         d.polygon([(x,y-bh) for x,y in bar], fill=(188,214,232),outline=GLASS_DK)
-        c=iso(ocx,gy+gh*0.5)
+        c=iso(C.px2gx(355), C.px2gy(672))
         return (c[0]+OX,c[1]+OY-h)
 
     # ---------- 体育馆：旋转胶囊（圆角矩形大跨）+ 平顶红墙 ----------
@@ -770,8 +754,35 @@ def render():
             uu.append(max(1,round(math.hypot(B[0]-A[0],B[1]-A[1])/16)))
         extrude_poly(d, pts, h, st["wall"], floors=st["floors"],
                      edge_units=uu, glass=GLASS, roof_facilities=False)
+        # 东侧竖向百叶附楼（图书馆），略高、深色玻璃
+        if b.get("annex"):
+            ap_=[Tp(C.px2gx(x),C.px2gy(y)) for x,y in b["annex"]]
+            m=len(ap_); uu2=[max(1,round(math.hypot(ap_[(i+1)%m][0]-ap_[i][0],
+                ap_[(i+1)%m][1]-ap_[i][1])/16)) for i in range(m)]
+            extrude_poly(d, ap_, h*1.03, add(st["wall"],-16), floors=st["floors"],
+                         edge_units=uu2, glass=GLASS_DK, roof_facilities=False)
+        # 屋顶玻璃天井/内院
+        if b.get("patio"):
+            pp=[Tp(C.px2gx(x),C.px2gy(y)) for x,y in b["patio"]]
+            d.polygon([(x,y-h) for x,y in pp], fill=(150,178,188), outline=GLASS_DK)
         cx=sum(p[0] for p in pts)/n; cy=sum(p[1] for p in pts)/n
         return (cx,cy-h)
+
+    # ---------- 大学生活动中心：西三角楔块 + 东不规则主体 ----------
+    def draw_act(b, st):
+        h=FLOOR_H*st["floors"]
+        def P(x,y): return Tp(C.px2gx(x),C.px2gy(y))
+        W_TRI=[(229,404),(249,404),(254,410),(241,431)]
+        W_MAIN=[(254,410),(259,407),(261,401),(279,396),(284,422),(277,431),(252,427)]
+        for pts in (W_TRI,W_MAIN):
+            q=[P(x,y) for x,y in pts]
+            m=len(q)
+            uu=[max(1,round(math.hypot(q[(i+1)%m][0]-q[i][0],
+                q[(i+1)%m][1]-q[i][1])/16)) for i in range(m)]
+            extrude_poly(d,q,h,st["wall"],floors=st["floors"],
+                         edge_units=uu,glass=GLASS_L,roof_facilities=False)
+        c=iso(C.px2gx(257),C.px2gy(416))
+        return (c[0]+OX,c[1]+OY-h)
 
     # ---------- 活动中心：斜楔异形 ----------
     def draw_wedge(b, st):
@@ -1053,6 +1064,8 @@ def render():
             ctr=draw_lib(b,st)
         elif kind=="wave":
             ctr=draw_wave(b,st)
+        elif kind=="act":
+            ctr=draw_act(b,st)
         elif kind=="gym":
             ctr=draw_gym(b,st)
         elif kind=="polyblock":
@@ -1091,7 +1104,7 @@ def render():
     img=Image.alpha_composite(img.convert("RGBA"),layer)
     dl=ImageDraw.Draw(img)
     ftitle=font(36); fsub=font(20); fleg=font(19); flegb=font(21)
-    dl.text((40,30),"北京化工大学昌平校区 · 2.5D等距数字校园 · 楼宇框架（v3.7 真实轮廓校准·审批稿）",fill=(28,42,52),font=ftitle)
+    dl.text((40,30),"北京化工大学昌平校区 · 2.5D等距数字校园 · 楼宇框架（v3.8 手绘确认轮廓·审批稿）",fill=(28,42,52),font=ftitle)
     dl.text((42,82),"按官方平面图与墨蓝手绘轮廓及官网实景照片校准（一教弯月双弧拱门+北侧小横杠·体育馆跑道形大跨灰挑檐·两操场椭圆田径场·玉屏双峰高镜亭+环山步道·文理楼E形·图书馆L形·二教锯齿·紫竹竖长·活动中心两块）；共 %d 个建筑/场地对象，后续各建筑替换为像素风插图。"%len(recs),
             fill=(88,98,108),font=fsub)
 
