@@ -1,0 +1,10 @@
+{
+  "name": "digital-campus",
+  "uuid": "1f949b8a-81d5-4842-a7aa-af093ef810fc",
+  "creator": {
+    "version": "3.8.0"
+  },
+  "type": "2d",
+  "description": "北京化工大学昌平校区 · 等距像素数字校园（Cocos Creator 3.8）",
+  "version": "1.0.0"
+}

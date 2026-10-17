@@ -1,0 +1,9 @@
+library/
+temp/
+local/
+build/
+profiles/
+native/
+.vscode/
+*.log
+.DS_Store
