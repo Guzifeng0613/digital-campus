@@ -60,6 +60,7 @@ export class CampusBootstrap extends Component {
       ut.setContentSize(size.width, size.height);
       const camNode = new Node('UICamera');
       camNode.layer = UI;
+      camNode.setPosition(0, 0, 1000);
       canvasNode.addChild(camNode);
       const cam = camNode.addComponent(Camera);
       cam.projection = Camera.ProjectionType.ORTHO;
@@ -67,6 +68,8 @@ export class CampusBootstrap extends Component {
       cam.clearFlags = Camera.ClearFlag.SOLID_COLOR;
       cam.clearColor = new Color(15, 20, 27, 255);
       cam.orthoHeight = size.height / 2;
+      cam.near = 0;
+      cam.far = 2000;
       cam.priority = 1024;
       canvas.cameraComponent = cam;
       director.getScene()!.addChild(canvasNode);
@@ -204,8 +207,10 @@ export class CampusBootstrap extends Component {
   // ---------- 深度排序（地面在最底） ----------
   private sortSprites() {
     const arr = this.buildingNodes.map(x => ({ depth: x.b.depth, node: x.node }));
-    const gi = imageToGrid(this.playerImg.x, this.playerImg.y);
-    arr.push({ depth: gi.gx + gi.gy, node: this.player });
+    if (this.player) {
+      const gi = imageToGrid(this.playerImg.x, this.playerImg.y);
+      arr.push({ depth: gi.gx + gi.gy, node: this.player });
+    }
     arr.sort((a, b) => a.depth - b.depth);
     arr.forEach((it, i) => it.node.setSiblingIndex(i + 1));
   }
@@ -320,25 +325,33 @@ export class CampusBootstrap extends Component {
     this.sortSprites();
     if (this.follow) {
       const vs = this.viewSize();
-      this.content.setPosition(-lp.x * this.zoom, -lp.y * this.zoom + (0.12 * vs.y), 0);
+      this.content.setPosition(-lp.x * this.zoom, -lp.y * this.zoom - 0.12 * vs.y, 0);
     }
   }
 
   // ---------- HUD ----------
   private btnFollow!: Node;
+  private fillRound(node: Node, w: number, h: number, color: Color, r: number): Graphics {
+    let g = node.getComponent(Graphics);
+    if (!g) g = node.addComponent(Graphics);
+    g.clear();
+    g.fillColor = color;
+    g.roundRect(-w / 2, -h / 2, w, h, r);
+    g.fill();
+    return g;
+  }
   private buildHUD() {
     const vs = this.viewSize();
     const mk = (text: string, px: number, py: number, cb: () => void): Node => {
       const n = new Node(text);
       n.layer = UI; n.addComponent(UITransform).setContentSize(120, 40);
-      const sp = n.addComponent(Sprite); sp.type = Sprite.Type.SIMPLE; sp.sizeMode = Sprite.SizeMode.CUSTOM;
-      sp.color = new Color(40, 58, 88, 240);
-      const lb = new Node('Label'); lb.layer = UI;
+      this.fillRound(n, 120, 40, new Color(40, 58, 88, 240), 8);
+      const lb = new Node('Label'); lb.layer = UI; lb.addComponent(UITransform);
       const l = lb.addComponent(Label); l.string = text; l.fontSize = 20; l.lineHeight = 24;
       l.color = new Color(233, 240, 255);
-      lb.addComponent(UITransform); lb.setPosition(0, 0, 0);
+      lb.setPosition(0, 0, 0);
       n.addChild(lb);
-      const btn = n.addComponent(Button);
+      n.addComponent(Button);
       n.on(Button.EventType.CLICK, cb, this);
       n.setPosition(px, py, 0);
       this.canvas.addChild(n);
@@ -347,14 +360,12 @@ export class CampusBootstrap extends Component {
     this.btnFollow = mk('跟随角色', vs.x / 2 - 220, vs.y / 2 - 40, () => { this.follow = true; this.updateFollowBtn(); });
     mk('重置视角', vs.x / 2 - 90, vs.y / 2 - 40, () => { this.follow = false; this.centerView(); this.updateFollowBtn(); });
 
-    // 信息面板（默认隐藏）
+    // 信息面板（默认隐藏，中心锚点）
     const panel = new Node('InfoPanel');
     panel.layer = UI;
-    const put = panel.addComponent(UITransform); put.setContentSize(320, 300);
-    put.setAnchorPoint(1, 1);
-    const psp = panel.addComponent(Sprite); psp.type = Sprite.Type.SIMPLE; psp.sizeMode = Sprite.SizeMode.CUSTOM;
-    psp.color = new Color(18, 26, 38, 240);
-    panel.setPosition(vs.x / 2 - 16, vs.y / 2 - 70, 0);
+    panel.addComponent(UITransform).setContentSize(320, 300);
+    this.fillRound(panel, 320, 300, new Color(18, 26, 38, 240), 12);
+    panel.setPosition(vs.x / 2 - 176, vs.y / 2 - 220, 0);
     panel.active = false;
     this.canvas.addChild(panel);
     this.panel = panel;
@@ -369,15 +380,15 @@ export class CampusBootstrap extends Component {
       panel.addChild(ln);
       return l;
     };
-    this.panelUIs.no = addLb('No', 130, 16, new Color(150, 190, 255));
-    this.panelUIs.name = addLb('Name', 100, 24, new Color(255, 255, 255));
-    this.panelUIs.tag = addLb('Tag', 60, 15, new Color(120, 180, 255));
-    this.panelUIs.desc = addLb('Desc', 30, 16, new Color(205, 217, 238));
+    this.panelUIs.no = addLb('No', 128, 16, new Color(150, 190, 255));
+    this.panelUIs.name = addLb('Name', 96, 24, new Color(255, 255, 255));
+    this.panelUIs.tag = addLb('Tag', 56, 15, new Color(120, 180, 255));
+    this.panelUIs.desc = addLb('Desc', 26, 16, new Color(205, 217, 238));
     // 关闭
     const close = new Node('Close'); close.layer = UI;
     close.addComponent(UITransform).setContentSize(40, 40);
     const cl = close.addComponent(Label); cl.string = '×'; cl.fontSize = 28; cl.color = new Color(255, 255, 255);
-    close.setPosition(140, 130, 0);
+    close.setPosition(140, 120, 0);
     close.addComponent(Button);
     close.on(Button.EventType.CLICK, () => { this.panel.active = false; }, this);
     panel.addChild(close);
@@ -385,8 +396,8 @@ export class CampusBootstrap extends Component {
   private panelUIs: { no?: Label; name?: Label; tag?: Label; desc?: Label } = {};
   private updateFollowBtn() {
     if (!this.btnFollow) return;
-    const sp = this.btnFollow.getComponent(Sprite)!;
-    sp.color = this.follow ? new Color(45, 108, 223, 255) : new Color(40, 58, 88, 240);
+    this.fillRound(this.btnFollow, 120, 40,
+      this.follow ? new Color(45, 108, 223, 255) : new Color(40, 58, 88, 240), 8);
   }
   private showInfo(b: CampusBuilding) {
     this.panel.active = true;
