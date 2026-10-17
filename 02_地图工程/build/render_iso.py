@@ -46,7 +46,7 @@ STYLE = {
     "GYM":            dict(kind="gymbox",wall=(156,66,50),floors=4),
     "FIELD-N":        dict(kind="field"),
     "FIELD-W":        dict(kind="field"),
-    "CAN-ZIZHU":      dict(kind="polyblock", wall=(182,84,62),  floors=3),
+    "CAN-ZIZHU":      dict(kind="zizhu", wall=(178,82,60),  floors=3),
     "ENG-TRAIN":      dict(kind="terui", wall=(170,78,68),floors=4),
     "GATE-S":         dict(kind="gate",   axis="h"),
     "GATE-E":         dict(kind="gate",   axis="v"),
@@ -1049,6 +1049,51 @@ def render():
         cx=sum(p[0] for p in pts)/n; cy=sum(p[1] for p in pts)/n
         return (cx,cy-h)
 
+    # ---------- 紫竹食堂：红砖盒 + 北段塔楼通高竖窗 + 南段玻璃门厅灰雨棚 + 顶部竖百叶 ----------
+    def draw_zizhu(b, st):
+        gp=b["gpoly"]; h=FLOOR_H*st["floors"]
+        gxs=[x for x,y in gp]; gys=[y for x,y in gp]
+        # 外接凸矩形挤出（北缘凹口仅作屋顶线，避免凹多边形挤出尖刺）
+        rect=[(min(gxs),min(gys)),(max(gxs),min(gys)),(max(gxs),max(gys)),(min(gxs),max(gys))]
+        pts=as_cw([Tp(x,y) for x,y in rect]); n=4
+        ZRED=(178,82,60)
+        extrude_poly(d, pts, h, ZRED, floors=st["floors"], edge_units=[1]*n,
+                     glass=None, roof=(166,150,138), roof_facilities=False)
+        elens=[((pts[(i+1)%n][0]-pts[i][0])**2+(pts[(i+1)%n][1]-pts[i][1])**2)**0.5 for i in range(n)]
+        lmax=max(elens)
+        for i in range(n):
+            A=pts[i]; B=pts[(i+1)%n]
+            if B[0]-A[0] >= -0.5: continue
+            def P(u,v): return (A[0]+(B[0]-A[0])*u, A[1]+(B[1]-A[1])*u - v*h)
+            if elens[i] > lmax*0.7:
+                # 北段塔楼：通高竖条窗（6 条）
+                for k in range(6):
+                    uc=0.06+(0.42-0.06)*k/5
+                    d.polygon([P(uc-0.020,0.12),P(uc+0.020,0.12),P(uc+0.020,0.90),P(uc-0.020,0.90)],
+                              fill=(106,152,178),outline=(52,84,108))
+                # 南段矮翼：下部通长玻璃门厅
+                d.polygon([P(0.50,0.06),P(0.98,0.06),P(0.98,0.60),P(0.50,0.60)],
+                          fill=(108,152,176),outline=(54,86,108))
+                for u in (0.60,0.70,0.80,0.90):
+                    d.line([P(u,0.06),P(u,0.60)],fill=add(GLASS_L,8),width=1)
+                d.line([P(0.50,0.33),P(0.98,0.33)],fill=add(GLASS_L,8),width=1)
+                # 灰色悬挑雨棚
+                d.polygon([P(0.47,0.60),P(1.01,0.60),P(1.03,0.69),P(0.45,0.69)],
+                          fill=(180,182,182),outline=(118,120,120))
+                # 上部竖百叶
+                for k in range(9):
+                    uc=0.52+0.44*k/8
+                    d.polygon([P(uc-0.013,0.73),P(uc+0.013,0.73),P(uc+0.013,0.93),P(uc-0.013,0.93)],
+                              fill=(84,60,52))
+            elif elens[i] > lmax*0.5:
+                # 短立面：通高竖窗（排除北缘凹口短内墙）
+                for k in range(3):
+                    uc=0.25+0.25*k
+                    d.polygon([P(uc-0.05,0.16),P(uc+0.05,0.16),P(uc+0.05,0.86),P(uc-0.05,0.86)],
+                              fill=(106,152,178),outline=(52,84,108))
+        cx=sum(p[0] for p in pts)/n; cy=sum(p[1] for p in pts)/n
+        return (cx,cy-h)
+
     # ---------- 大学生活动中心：单一白色菱形穿孔体（蝴蝶形两翼南连）+ 波浪檐口 ----------
     def draw_act(b, st):
         h=FLOOR_H*st["floors"]
@@ -1496,6 +1541,8 @@ def render():
             ctr=draw_yulan(b,st)
         elif kind=="terui":
             ctr=draw_terui(b,st)
+        elif kind=="zizhu":
+            ctr=draw_zizhu(b,st)
         elif kind=="gym":
             ctr=draw_gym(b,st)
         elif kind=="polyblock":
@@ -1508,11 +1555,12 @@ def render():
             ctr=draw_block(b,st)
         centers[b["id"]]=(ctr,b)
 
-    # 实验群两进内院的灰色钢网格遮阳棚（架空在三层高度）
-    draw_lab_canopy(394,539,447,557)   # 北院
-    draw_lab_canopy(394,599,447,615)   # 南院
-    # 东门内机动车环岛
-    draw_roundabout(455,640,15)
+    if globals().get("DRAW_CANOPY", True):
+        # 实验群两进内院的灰色钢网格遮阳棚（架空在三层高度）
+        draw_lab_canopy(394,539,447,557)   # 北院
+        draw_lab_canopy(394,599,447,615)   # 南院
+        # 东门内机动车环岛
+        draw_roundabout(455,640,15)
 
     # ---------- 编号 + 名称（在建筑之上）----------
     for bid,(ctr,b) in centers.items() if globals().get("DRAW_LABELS", True) else ():
@@ -1533,9 +1581,10 @@ def render():
             d.text((cxs-tw2/2,cys+bh/2+5),nm,fill=(255,255,255),font=f2)
 
     # ---------- POI ----------
-    for p in C.build_pois():
-        x,y=Tp(*p["grid"]); y-=10
-        d.ellipse([x-6,y-6,x+6,y+6],fill=(242,198,18),outline=(130,84,0),width=2)
+    if globals().get("DRAW_POI", True):
+        for p in C.build_pois():
+            x,y=Tp(*p["grid"]); y-=10
+            d.ellipse([x-6,y-6,x+6,y+6],fill=(242,198,18),outline=(130,84,0),width=2)
 
     img=Image.alpha_composite(img.convert("RGBA"),layer)
     dl=ImageDraw.Draw(img)
@@ -1544,15 +1593,16 @@ def render():
     dl.text((42,82),"按官方平面图与墨蓝手绘轮廓及官网实景照片校准（一教弯月双弧拱门+北侧小横杠·体育馆跑道形大跨灰挑檐·两操场椭圆田径场·玉屏双峰高镜亭+环山步道·文理楼E形·图书馆L形·二教锯齿·紫竹竖长·活动中心两块）；共 %d 个建筑/场地对象，后续各建筑替换为像素风插图。"%len(recs),
             fill=(88,98,108),font=fsub)
 
-    _name_pos={n["name"]:(n["grid"][0]+n["grid"][2]/2, n["grid"][1]+n["grid"][3]/2)
-               for n in C.build_nature()}
-    for nm,col in [("玉屏山",(240,255,240)),("柳湖",(255,255,255)),("南湖",(255,255,255))]:
-        if nm not in _name_pos: continue
-        ngx,ngy=_name_pos[nm]
-        x,y=Tp(ngx,ngy)
-        f=font(20); tw=dl.textlength(nm,font=f)
-        dl.rounded_rectangle([x-tw/2-8,y-15,x+tw/2+8,y+13],radius=6,fill=(20,40,30,150))
-        dl.text((x-tw/2,y-13),nm,fill=col,font=f)
+    if globals().get("DRAW_LABELS", True):
+        _name_pos={n["name"]:(n["grid"][0]+n["grid"][2]/2, n["grid"][1]+n["grid"][3]/2)
+                   for n in C.build_nature()}
+        for nm,col in [("玉屏山",(240,255,240)),("柳湖",(255,255,255)),("南湖",(255,255,255))]:
+            if nm not in _name_pos: continue
+            ngx,ngy=_name_pos[nm]
+            x,y=Tp(ngx,ngy)
+            f=font(20); tw=dl.textlength(nm,font=f)
+            dl.rounded_rectangle([x-tw/2-8,y-15,x+tw/2+8,y+13],radius=6,fill=(20,40,30,150))
+            dl.text((x-tw/2,y-13),nm,fill=col,font=f)
 
     # 图例（仅实际使用类别）
     used=set(b["cat"] for b in recs) | set(n["cat"] for n in C.build_nature())
