@@ -19,7 +19,9 @@ export class CampusBootstrap extends Component {
   private camera!: Camera;
   private content!: Node;
   private player!: Node;
-  private pg!: Graphics;
+  private pg!: Graphics;                       // 代码绘制小人（帧加载失败时的兜底）
+  private playerSprite: Sprite | null = null; // 像素角色序列帧
+  private playerFrames: Record<string, (SpriteFrame | null)[]> = {};
   private panel!: Node;
 
   private zoom = 0.1;
@@ -46,6 +48,7 @@ export class CampusBootstrap extends Component {
       this.buildContent();
       this.buildHUD();
       await this.buildMap();
+      await this.loadPlayerFrames();
       this.buildPlayer();
       this.centerView();
       this.bindInput();
@@ -172,7 +175,28 @@ export class CampusBootstrap extends Component {
     return n;
   }
 
-  // ---------- 角色（代码绘制像素小人） ----------
+  // ---------- 角色（像素序列帧，加载失败时回退 Graphics 绘制） ----------
+  private async loadPlayerFrames() {
+    const dirs = ['down', 'up', 'left', 'right'];
+    const tasks: Promise<SpriteFrame | null>[] = [];
+    for (const dir of dirs) for (let f = 0; f < 4; f++) {
+      tasks.push(this.loadSF('player/player_' + dir + '_' + f).catch(() => null));
+    }
+    const sfs = await Promise.all(tasks);
+    let i = 0;
+    for (const dir of dirs) {
+      this.playerFrames[dir] = [];
+      for (let f = 0; f < 4; f++) {
+        const sf = sfs[i];
+        if (sf) sf.texture.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.POINT);
+        this.playerFrames[dir].push(sf);
+        i++;
+      }
+    }
+    const ok = Object.values(this.playerFrames).filter(arr => arr[0]).length;
+    console.log('[数字校园] 角色帧：' + (ok === 4 ? '4 方向 × 4 帧就绪' : ok + '/4 方向，将回退代码绘制'));
+  }
+
   private buildPlayer() {
     // 起点：南门内侧
     const gate = BUILDINGS.find(b => b.id === 'GATE-S')!;
@@ -183,9 +207,27 @@ export class CampusBootstrap extends Component {
 
     this.player = new Node('Player');
     this.player.layer = UI;
-    this.player.addComponent(UITransform);
-    this.pg = this.player.addComponent(Graphics);
+    const ut = this.player.addComponent(UITransform);
+    ut.setContentSize(64, 64);
+    ut.setAnchorPoint(0.5, 0.81);          // 锚点在鞋底（帧图 64 高，鞋在 y≈52）
+    this.playerSprite = this.player.addComponent(Sprite);
+    this.playerSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    this.pg = this.player.addComponent(Graphics);  // 帧加载失败时的兜底绘制
     this.content.addChild(this.player);
+    this.updatePlayerFrame();
+  }
+
+  private updatePlayerFrame() {
+    const frames = this.playerFrames[this.facing];
+    const hasFrame = !!(frames && frames[0] && this.playerSprite);
+    if (hasFrame) {
+      const f = this.moving ? (Math.floor(this.phase) % 4) : 0;
+      this.playerSprite!.spriteFrame = frames[f]!;
+      if (this.pg) this.pg.clear();
+      this.player.setScale(1, 1, 1);
+    } else {
+      this.drawPlayer();
+    }
   }
 
   private drawPlayer() {
@@ -354,7 +396,7 @@ export class CampusBootstrap extends Component {
     }
     const lp = imageToLocal(this.playerImg.x, this.playerImg.y);
     this.player.setPosition(lp.x, lp.y, 0);
-    this.drawPlayer();
+    this.updatePlayerFrame();
     this.sortSprites();
     if (this.follow) {
       const vs = this.viewSize();
