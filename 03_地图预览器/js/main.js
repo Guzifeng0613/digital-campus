@@ -342,6 +342,9 @@
   let currentBuilding = null;
   function showInfo(b) {
     currentBuilding = b;
+    const iImg = document.getElementById("iImg");
+    iImg.src = b.img;
+    iImg.alt = b.name;
     document.getElementById("iNo").textContent = "点位 " + String(b.no).padStart(2, "0") + " · " + b.id;
     document.getElementById("iName").textContent = b.name;
     document.getElementById("iTag").textContent = GROUP_CN[b.group] || b.group;

@@ -29,6 +29,7 @@ export class CampusBootstrap extends Component {
   private playerSprite: Sprite | null = null; // 像素角色序列帧
   private playerFrames: Record<string, (SpriteFrame | null)[]> = {};
   private panel!: Node;
+  private photoSprite: Sprite | null = null;
 
   private zoom = 0.1;
   private follow = false;
@@ -732,9 +733,9 @@ export class CampusBootstrap extends Component {
     // 信息面板（默认隐藏，中心锚点）
     const panel = new Node('InfoPanel');
     panel.layer = UI;
-    panel.addComponent(UITransform).setContentSize(320, 300);
-    this.fillRound(panel, 320, 300, new Color(18, 26, 38, 240), 12);
-    panel.setPosition(vs.x / 2 - 176, vs.y / 2 - 220, 0);
+    panel.addComponent(UITransform).setContentSize(320, 460);
+    this.fillRound(panel, 320, 460, new Color(18, 26, 38, 240), 12);
+    panel.setPosition(vs.x / 2 - 176, vs.y / 2 - 250, 0);
     panel.active = false;
     this.canvas.addChild(panel);
     this.panel = panel;
@@ -749,15 +750,31 @@ export class CampusBootstrap extends Component {
       panel.addChild(ln);
       return l;
     };
-    this.panelUIs.no = addLb('No', 128, 16, new Color(150, 190, 255));
-    this.panelUIs.name = addLb('Name', 96, 24, new Color(255, 255, 255));
-    this.panelUIs.tag = addLb('Tag', 56, 15, new Color(120, 180, 255));
-    this.panelUIs.desc = addLb('Desc', 26, 16, new Color(205, 217, 238));
+    this.panelUIs.no = addLb('No', 210, 16, new Color(150, 190, 255));
+    this.panelUIs.name = addLb('Name', 182, 24, new Color(255, 255, 255));
+    // 配图区（浅色展台背景 + 建筑 Sprite）
+    const photoBg = new Node('PhotoBg'); photoBg.layer = UI;
+    photoBg.addComponent(UITransform).setContentSize(288, 148);
+    const pbg = photoBg.addComponent(Graphics);
+    pbg.fillColor = new Color(224, 234, 244, 255);
+    pbg.roundRect(-144, -74, 288, 148, 10); pbg.fill();
+    pbg.strokeColor = new Color(120, 170, 255, 60); pbg.lineWidth = 1; pbg.stroke();
+    photoBg.setPosition(0, 90, 0);
+    panel.addChild(photoBg);
+    const photoNode = new Node('Photo'); photoNode.layer = UI;
+    photoNode.addComponent(UITransform).setContentSize(280, 142);
+    const photoSprite = photoNode.addComponent(Sprite);
+    photoSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    photoNode.setPosition(0, 90, 0);
+    panel.addChild(photoNode);
+    this.photoSprite = photoSprite;
+    this.panelUIs.tag = addLb('Tag', -6, 15, new Color(120, 180, 255));
+    this.panelUIs.desc = addLb('Desc', -36, 16, new Color(205, 217, 238));
     // 关闭
     const close = new Node('Close'); close.layer = UI;
     close.addComponent(UITransform).setContentSize(40, 40);
     const cl = close.addComponent(Label); cl.string = '×'; cl.fontSize = 28; cl.color = new Color(255, 255, 255);
-    close.setPosition(140, 120, 0);
+    close.setPosition(140, 212, 0);
     close.addComponent(Button);
     close.on(Button.EventType.CLICK, () => { this.panel.active = false; }, this);
     panel.addChild(close);
@@ -773,7 +790,7 @@ export class CampusBootstrap extends Component {
     gotoBtn.on(Button.EventType.CLICK, () => {
       if (this.currentBuilding) this.navigateToBuilding(this.currentBuilding);
     }, this);
-    gotoBtn.setPosition(0, -122, 0);
+    gotoBtn.setPosition(0, -195, 0);
     panel.addChild(gotoBtn);
 
     // 寻路提示（底部居中）
@@ -807,5 +824,13 @@ export class CampusBootstrap extends Component {
     this.panelUIs.name!.string = b.name;
     this.panelUIs.tag!.string = GROUP_CN[b.group] || b.group;
     this.panelUIs.desc!.string = b.desc || '';
+    // 配图：复用地图上已加载的同栋 SpriteFrame，contain 到 280×142
+    const entry = this.buildingNodes.find(x => x.b === b);
+    const sf = entry ? entry.node.getComponent(Sprite)!.spriteFrame : null;
+    if (this.photoSprite && sf) {
+      this.photoSprite.spriteFrame = sf;
+      const sc = Math.min(280 / sf.width, 142 / sf.height);
+      this.photoSprite.node.getComponent(UITransform)!.setContentSize(sf.width * sc, sf.height * sc);
+    }
   }
 }

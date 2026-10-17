@@ -64,6 +64,11 @@
   #info .close { position:absolute; top:10px; right:12px; cursor:pointer; font-size:20px; color:#dce8ff; line-height:1; }
   #hint { position:fixed; bottom:16px; right:16px; z-index:10; font-size:12px; color:#7f93b8;
     background:rgba(18,26,38,.6); padding:6px 10px; border-radius:8px; }
+  #info .photo { margin:4px 16px 12px; height:172px; border-radius:10px; overflow:hidden;
+    background:linear-gradient(165deg,#dfe9f4,#e7f0e4 72%);
+    border:1px solid rgba(120,170,255,.2); display:flex; align-items:flex-end; justify-content:center; }
+  #info .photo img { max-width:100%; max-height:100%; object-fit:contain; image-rendering:pixelated;
+    filter:drop-shadow(0 6px 8px rgba(40,60,90,.25)); }
   .goto-btn { margin-top:12px; width:100%; padding:9px 0; border-radius:9px; cursor:pointer;
     font-size:13px; color:#fff; background:#2d6cdf; border:1px solid #6ea8ff; transition:background .15s; }
   .goto-btn:hover { background:#3a7ef0; }
@@ -115,6 +120,7 @@
   <div class="head"><div class="close" id="infoClose">×</div>
     <div class="no" id="iNo"></div><div class="nm" id="iName"></div>
   </div>
+  <div class="photo"><img id="iImg" alt=""></div>
   <div class="body">
     <span class="tag" id="iTag"></span>
     <div id="iDesc"></div>
