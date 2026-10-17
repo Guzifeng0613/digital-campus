@@ -745,20 +745,26 @@ def render():
         return (cx,cy-h)
 
     # ---------- 通用：倾斜矩形（泰瑞楼，poly 平面）----------
+    def signed_area(qq):
+        m=len(qq)
+        return sum(qq[i][0]*qq[(i+1)%m][1]-qq[(i+1)%m][0]*qq[i][1] for i in range(m))
+    def as_cw(qq):
+        return qq[::-1] if signed_area(qq)<0 else qq
+    def edge_units_of(qq, k=16):
+        m=len(qq)
+        return [max(1,round(math.hypot(qq[(i+1)%m][0]-qq[i][0],
+                qq[(i+1)%m][1]-qq[i][1])/k)) for i in range(m)]
+
     def draw_polyblock(b, st):
         gp=b["gpoly"]; h=FLOOR_H*st["floors"]
-        pts=[Tp(x,y) for x,y in gp]
-        n=len(pts); uu=[]
-        for i in range(n):
-            A=pts[i]; B=pts[(i+1)%n]
-            uu.append(max(1,round(math.hypot(B[0]-A[0],B[1]-A[1])/16)))
+        pts=as_cw([Tp(x,y) for x,y in gp])
+        n=len(pts); uu=edge_units_of(pts)
         extrude_poly(d, pts, h, st["wall"], floors=st["floors"],
                      edge_units=uu, glass=GLASS, roof_facilities=False)
         # 东侧竖向百叶附楼（图书馆），略高、深色玻璃
         if b.get("annex"):
-            ap_=[Tp(C.px2gx(x),C.px2gy(y)) for x,y in b["annex"]]
-            m=len(ap_); uu2=[max(1,round(math.hypot(ap_[(i+1)%m][0]-ap_[i][0],
-                ap_[(i+1)%m][1]-ap_[i][1])/16)) for i in range(m)]
+            ap_=as_cw([Tp(C.px2gx(x),C.px2gy(y)) for x,y in b["annex"]])
+            m=len(ap_); uu2=edge_units_of(ap_)
             extrude_poly(d, ap_, h*1.03, add(st["wall"],-16), floors=st["floors"],
                          edge_units=uu2, glass=GLASS_DK, roof_facilities=False)
         # 屋顶玻璃天井/内院
@@ -1079,7 +1085,7 @@ def render():
         centers[b["id"]]=(ctr,b)
 
     # ---------- 编号 + 名称（在建筑之上）----------
-    for bid,(ctr,b) in centers.items():
+    for bid,(ctr,b) in centers.items() if globals().get("DRAW_LABELS", True) else ():
         cxs,cys=ctr
         if style_of(b)["kind"] in ("field","hall","cupola"):
             cys=cys-6
