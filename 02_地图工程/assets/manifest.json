@@ -7,15 +7,15 @@
     "floor_h": 14
   },
   "count": 16,
-  "convention": "sprites_alpha 为去背景透明底（Tiled/Cocos 调用）；sprites 为浅绿草地底座展示版；logical_size 为逻辑像素，canvas_size=logical×4；grid 为校园等距网格坐标 gx,gy,gw,gh（用于定位）。",
+  "convention": "三层资产：sprites/<group>/ 透明底（Tiled/Cocos 调用，1600px RGBA）；preview/<group>/ 浅绿底座展示版；source/<group>/ 2048 高清未量化源（再加工用）。分组 teaching/public/sports/dining/gate/nature。logical_size 为逻辑像素，canvas_size=logical×4；grid 为校园等距网格坐标 gx,gy,gw,gh。",
   "items": [
     {
       "id": "FIELD-W",
       "no": 1,
       "name": "风雨操场",
       "category": "field",
-      "file_preview": "assets/sprites/FIELD-W.png",
-      "file": "assets/sprites_alpha/FIELD-W.png",
+      "file_preview": "assets/preview/sports/FIELD-W.png",
+      "file": "assets/sprites/sports/FIELD-W.png",
       "logical_size": [
         400,
         400
@@ -32,15 +32,16 @@
         "gw": 16.46,
         "gh": 29.12
       },
-      "floors": 4
+      "floors": 4,
+      "file_source": "assets/source/sports/FIELD-W.png"
     },
     {
       "id": "GYM",
       "no": 2,
       "name": "体育馆",
       "category": "gym",
-      "file_preview": "assets/sprites/GYM.png",
-      "file": "assets/sprites_alpha/GYM.png",
+      "file_preview": "assets/preview/sports/GYM.png",
+      "file": "assets/sprites/sports/GYM.png",
       "logical_size": [
         400,
         400
@@ -57,15 +58,16 @@
         "gw": 19.64,
         "gh": 19.63
       },
-      "floors": 4
+      "floors": 4,
+      "file_source": "assets/source/sports/GYM.png"
     },
     {
       "id": "TEACH-1",
       "no": 3,
       "name": "第一教学楼",
       "category": "teaching",
-      "file_preview": "assets/sprites/TEACH-1.png",
-      "file": "assets/sprites_alpha/TEACH-1.png",
+      "file_preview": "assets/preview/teaching/TEACH-1.png",
+      "file": "assets/sprites/teaching/TEACH-1.png",
       "logical_size": [
         400,
         267
@@ -82,15 +84,16 @@
         "gw": 44.31,
         "gh": 20.89
       },
-      "floors": 5
+      "floors": 5,
+      "file_source": "assets/source/teaching/TEACH-1.png"
     },
     {
       "id": "LAB-TECH",
       "no": 4,
       "name": "实验楼群",
       "category": "lab",
-      "file_preview": "assets/sprites/LAB-TECH.png",
-      "file": "assets/sprites_alpha/LAB-TECH.png",
+      "file_preview": "assets/preview/teaching/LAB-TECH.png",
+      "file": "assets/sprites/teaching/LAB-TECH.png",
       "logical_size": [
         400,
         400
@@ -107,15 +110,16 @@
         "gw": 24.69,
         "gh": 34.18
       },
-      "floors": 5
+      "floors": 5,
+      "file_source": "assets/source/teaching/LAB-TECH.png"
     },
     {
       "id": "GATE-S",
       "no": 5,
       "name": "南门(主校门)",
       "category": "gate",
-      "file_preview": "assets/sprites/GATE-S.png",
-      "file": "assets/sprites_alpha/GATE-S.png",
+      "file_preview": "assets/preview/gate/GATE-S.png",
+      "file": "assets/sprites/gate/GATE-S.png",
       "logical_size": [
         400,
         400
@@ -128,19 +132,20 @@
       "pixel_scale": 4,
       "grid": {
         "gx": 76.9,
-        "gy": 254.15,
+        "gy": 260.5,
         "gw": 12.66,
         "gh": 5.06
       },
-      "floors": 4
+      "floors": 4,
+      "file_source": "assets/source/gate/GATE-S.png"
     },
     {
       "id": "GATE-E",
       "no": 6,
       "name": "东门",
       "category": "gate",
-      "file_preview": "assets/sprites/GATE-E.png",
-      "file": "assets/sprites_alpha/GATE-E.png",
+      "file_preview": "assets/preview/gate/GATE-E.png",
+      "file": "assets/sprites/gate/GATE-E.png",
       "logical_size": [
         400,
         400
@@ -157,15 +162,16 @@
         "gw": 3.8,
         "gh": 6.96
       },
-      "floors": 4
+      "floors": 4,
+      "file_source": "assets/source/gate/GATE-E.png"
     },
     {
       "id": "LIB",
       "no": 7,
       "name": "图书馆",
       "category": "library",
-      "file_preview": "assets/sprites/LIB.png",
-      "file": "assets/sprites_alpha/LIB.png",
+      "file_preview": "assets/preview/public/LIB.png",
+      "file": "assets/sprites/public/LIB.png",
       "logical_size": [
         400,
         400
@@ -182,15 +188,16 @@
         "gw": 17.72,
         "gh": 13.61
       },
-      "floors": 6
+      "floors": 6,
+      "file_source": "assets/source/public/LIB.png"
     },
     {
       "id": "WENLI",
       "no": 8,
       "name": "文理楼",
       "category": "college",
-      "file_preview": "assets/sprites/WENLI.png",
-      "file": "assets/sprites_alpha/WENLI.png",
+      "file_preview": "assets/preview/teaching/WENLI.png",
+      "file": "assets/sprites/teaching/WENLI.png",
       "logical_size": [
         400,
         400
@@ -207,15 +214,16 @@
         "gw": 11.39,
         "gh": 12.98
       },
-      "floors": 4
+      "floors": 4,
+      "file_source": "assets/source/teaching/WENLI.png"
     },
     {
       "id": "TEACH-2",
       "no": 9,
       "name": "第二教学楼",
       "category": "teaching",
-      "file_preview": "assets/sprites/TEACH-2.png",
-      "file": "assets/sprites_alpha/TEACH-2.png",
+      "file_preview": "assets/preview/teaching/TEACH-2.png",
+      "file": "assets/sprites/teaching/TEACH-2.png",
       "logical_size": [
         400,
         400
@@ -232,15 +240,16 @@
         "gw": 19.94,
         "gh": 17.41
       },
-      "floors": 5
+      "floors": 5,
+      "file_source": "assets/source/teaching/TEACH-2.png"
     },
     {
       "id": "ACT",
       "no": 10,
       "name": "大学生活动中心",
       "category": "activity",
-      "file_preview": "assets/sprites/ACT.png",
-      "file": "assets/sprites_alpha/ACT.png",
+      "file_preview": "assets/preview/public/ACT.png",
+      "file": "assets/sprites/public/ACT.png",
       "logical_size": [
         400,
         400
@@ -257,15 +266,16 @@
         "gw": 16.78,
         "gh": 11.08
       },
-      "floors": 4
+      "floors": 4,
+      "file_source": "assets/source/public/ACT.png"
     },
     {
       "id": "CAN-YULAN",
       "no": 11,
       "name": "玉兰食堂",
       "category": "canteen",
-      "file_preview": "assets/sprites/CAN-YULAN.png",
-      "file": "assets/sprites_alpha/CAN-YULAN.png",
+      "file_preview": "assets/preview/dining/CAN-YULAN.png",
+      "file": "assets/sprites/dining/CAN-YULAN.png",
       "logical_size": [
         400,
         400
@@ -282,15 +292,16 @@
         "gw": 7.6,
         "gh": 8.86
       },
-      "floors": 4
+      "floors": 4,
+      "file_source": "assets/source/dining/CAN-YULAN.png"
     },
     {
       "id": "CAN-ZIZHU",
       "no": 12,
       "name": "紫竹食堂",
       "category": "canteen",
-      "file_preview": "assets/sprites/CAN-ZIZHU.png",
-      "file": "assets/sprites_alpha/CAN-ZIZHU.png",
+      "file_preview": "assets/preview/dining/CAN-ZIZHU.png",
+      "file": "assets/sprites/dining/CAN-ZIZHU.png",
       "logical_size": [
         400,
         400
@@ -307,15 +318,16 @@
         "gw": 8.23,
         "gh": 12.03
       },
-      "floors": 4
+      "floors": 4,
+      "file_source": "assets/source/dining/CAN-ZIZHU.png"
     },
     {
       "id": "ENG-TRAIN",
       "no": 13,
       "name": "泰瑞楼(工程训练中心)",
       "category": "service",
-      "file_preview": "assets/sprites/ENG-TRAIN.png",
-      "file": "assets/sprites_alpha/ENG-TRAIN.png",
+      "file_preview": "assets/preview/teaching/ENG-TRAIN.png",
+      "file": "assets/sprites/teaching/ENG-TRAIN.png",
       "logical_size": [
         400,
         400
@@ -332,15 +344,16 @@
         "gw": 22.16,
         "gh": 24.06
       },
-      "floors": 4
+      "floors": 4,
+      "file_source": "assets/source/teaching/ENG-TRAIN.png"
     },
     {
       "id": "FIELD-N",
       "no": 14,
       "name": "北操场",
       "category": "field",
-      "file_preview": "assets/sprites/FIELD-N.png",
-      "file": "assets/sprites_alpha/FIELD-N.png",
+      "file_preview": "assets/preview/sports/FIELD-N.png",
+      "file": "assets/sprites/sports/FIELD-N.png",
       "logical_size": [
         400,
         400
@@ -357,15 +370,16 @@
         "gw": 14.56,
         "gh": 29.75
       },
-      "floors": 4
+      "floors": 4,
+      "file_source": "assets/source/sports/FIELD-N.png"
     },
     {
       "id": "MOUNT-YUPING",
       "no": 15,
       "name": "玉屏山",
       "category": "nature",
-      "file_preview": "assets/sprites/MOUNT-YUPING.png",
-      "file": "assets/sprites_alpha/MOUNT-YUPING.png",
+      "file_preview": "assets/preview/nature/MOUNT-YUPING.png",
+      "file": "assets/sprites/nature/MOUNT-YUPING.png",
       "logical_size": [
         400,
         267
@@ -382,15 +396,16 @@
         "gw": 43.68,
         "gh": 24.69
       },
-      "floors": 0
+      "floors": 0,
+      "file_source": "assets/source/nature/MOUNT-YUPING.png"
     },
     {
       "id": "GATE-W",
       "no": 16,
       "name": "西门",
       "category": "gate",
-      "file_preview": "assets/sprites/GATE-W.png",
-      "file": "assets/sprites_alpha/GATE-W.png",
+      "file_preview": "assets/preview/gate/GATE-W.png",
+      "file": "assets/sprites/gate/GATE-W.png",
       "logical_size": [
         400,
         400
@@ -407,7 +422,8 @@
         "gw": 3.8,
         "gh": 7.6
       },
-      "floors": 4
+      "floors": 4,
+      "file_source": "assets/source/gate/GATE-W.png"
     }
   ]
 }

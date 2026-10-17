@@ -204,13 +204,28 @@ def render():
     d.line(canal, fill=(90,166,116), width=12, joint="curve")
     d.line(canal, fill=(124,194,222), width=6, joint="curve")
 
-    # ---------- 道路 ----------
-    for r in C.build_roads():
-        pts=[Tp(x,y) for x,y in r["gpts"]]
-        w=max(6, int(r["w"]*TH/2.4))
-        d.line(pts, fill=(176,172,161), width=w+6, joint="curve")
-        d.line(pts, fill=(236,233,224), width=w, joint="curve")
-        d.line(pts, fill=(226,202,126), width=2, joint="curve")
+    # ---------- 道路（官方平面图真实路网：正交地面层→仿射等距）----------
+    try:
+        import numpy as np
+        import cv2
+        import roads_extract as RE
+        K = 8
+        gl = np.array(RE.ground_layer(K=K))
+        M = np.array([
+            [TW/2.0/K, -TW/2.0/K, (C.GX0-C.GY0)*TW/2.0 + OX],
+            [TH/2.0/K,  TH/2.0/K, (C.GX0+C.GY0)*TH/2.0 + OY],
+        ], dtype=np.float32)
+        warped = cv2.warpAffine(gl, M, (W, H), flags=cv2.INTER_LINEAR,
+                                borderMode=cv2.BORDER_CONSTANT,
+                                borderValue=(0, 0, 0, 0))
+        layer.alpha_composite(Image.fromarray(warped, "RGBA"))
+    except Exception:
+        # 回退：手绘骨架路
+        for r in C.build_roads():
+            pts=[Tp(x,y) for x,y in r["gpts"]]
+            w=max(6, int(r["w"]*TH/2.4))
+            d.line(pts, fill=(176,172,161), width=w+6, joint="curve")
+            d.line(pts, fill=(236,233,224), width=w, joint="curve")
 
     recs = C.numbered_buildings()
 

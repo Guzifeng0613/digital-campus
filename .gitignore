@@ -2,14 +2,9 @@
 __pycache__/
 *.pyc
 
-# 中间核对图（构建过程产物，保留正式交付图）
-02_地图工程/check/debug_*.png
-02_地图工程/check/crop_*.png
-02_地图工程/check/zoom_*.png
-02_地图工程/check/chk_*.png
-02_地图工程/check/ov_*.png
-02_地图工程/check/ortho_overview*.png
-02_地图工程/check/iso_review.png
+# 构建过程中间产物（核对图/调试图/单栋渲染/像素化过程，全部可由 build/ 脚本复现）
+# 正式交付资产在 02_地图工程/assets/（sprites/preview/source/catalog）
+02_地图工程/check/
 
 # 坐标校准过程网格图（官方照片目录只保留真实参考照片 ref_*.jpg）
 01_资料与参考/官方照片/g_*.png
