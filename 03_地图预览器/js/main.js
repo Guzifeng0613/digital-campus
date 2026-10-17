@@ -499,6 +499,10 @@
     const my = (e.clientY - rect.top) * (MM_H / rect.height);
     const { s, ox, oy } = mmTransform();
     const wx = (mx - ox) / s, wy = (my - oy) / s;
+    const [dx0, dy0, dx1, dy1] = M.diamond;
+    const dcx = (dx0 + dx1) / 2, dcy = (dy0 + dy1) / 2;
+    const inDiamond = Math.abs(wx - dcx) / ((dx1 - dx0) / 2) + Math.abs(wy - dcy) / ((dy1 - dy0) / 2) <= 1;
+    if (!inDiamond) return;  // 忽略菱形校园外的留白
     follow = false; updateFollowBtn();
     view.x = window.innerWidth / 2 - wx * view.zoom;
     view.y = window.innerHeight / 2 - wy * view.zoom;

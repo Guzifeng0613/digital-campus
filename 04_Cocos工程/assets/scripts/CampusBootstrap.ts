@@ -292,7 +292,10 @@ export class CampusBootstrap extends Component {
       const loc = root.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
       const wx = (loc.x / this.mmDrawW + 0.5) * GROUND_W;
       const wy = (0.5 - (loc.y - this.mmCY) / this.mmDrawH) * GROUND_H;
-      if (wx < 0 || wx > GROUND_W || wy < 0 || wy > GROUND_H) return;
+      const [dx0, dy0, dx1, dy1] = META.diamond;
+      const inDiamond = Math.abs(wx - (dx0 + dx1) / 2) / ((dx1 - dx0) / 2)
+        + Math.abs(wy - (dy0 + dy1) / 2) / ((dy1 - dy0) / 2) <= 1;
+      if (!inDiamond) return;   // 忽略菱形校园外的留白
       this.follow = false; this.updateFollowBtn();
       const lp = imageToLocal(wx, wy);
       this.content.setPosition(-lp.x * this.zoom, -lp.y * this.zoom, 0);
