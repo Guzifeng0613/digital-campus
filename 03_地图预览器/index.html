@@ -71,6 +71,12 @@
     font-size:13px; color:#dce8ff; background:rgba(18,26,38,.92); border:1px solid rgba(120,170,255,.3);
     padding:8px 18px; border-radius:20px; opacity:0; pointer-events:none; transition:all .2s; }
   #navTip.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  #minimapWrap { position:fixed; left:16px; bottom:16px; z-index:12;
+    background:rgba(18,26,38,.88); border:1px solid rgba(120,170,255,.3); border-radius:12px;
+    padding:6px 8px 8px; backdrop-filter:blur(6px); box-shadow:0 6px 24px rgba(0,0,0,.4); }
+  .mm-title { font-size:11px; color:#9cc4ff; margin:0 0 4px 2px; letter-spacing:.5px; }
+  #minimap { width:220px; height:116px; border-radius:6px; display:block; cursor:pointer;
+    background:#0d1620; }
 </style>
 </head>
 <body>
@@ -99,6 +105,11 @@
   <div>点击空地 <b>自动走过去</b> · 放大显示<b>建筑名</b></div>
 </div>
 <div id="hint"></div>
+
+<div id="minimapWrap">
+  <div class="mm-title">校园导览 · 点击定位视角</div>
+  <canvas id="minimap" width="220" height="116"></canvas>
+</div>
 
 <div id="info">
   <div class="head"><div class="close" id="infoClose">×</div>

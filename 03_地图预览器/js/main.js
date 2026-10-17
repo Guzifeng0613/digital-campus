@@ -12,6 +12,13 @@
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
   let dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const mmCanvas = document.getElementById("minimap");
+  const mmCtx = mmCanvas.getContext("2d");
+  const MM_W = mmCanvas.width, MM_H = mmCanvas.height;
+  const GROUP_COLOR = {
+    teaching: "#e8766b", public: "#f0b24c", sports: "#5fb4d6",
+    dining: "#7bd18a", gate: "#c9a0dc", nature: "#8fbf7f"
+  };
 
   // ---------- 视图状态 ----------
   const view = { x: 0, y: 0, zoom: 0.1 };
@@ -433,6 +440,67 @@
     }
   }
 
+  // ---------- 小地图导航 ----------
+  function mmTransform() {
+    const pad = 4;
+    const s = Math.min((MM_W - 2 * pad) / GW, (MM_H - 2 * pad) / GH);
+    return { s, ox: (MM_W - GW * s) / 2, oy: (MM_H - GH * s) / 2 };
+  }
+  function drawMinimap() {
+    const { s, ox, oy } = mmTransform();
+    mmCtx.clearRect(0, 0, MM_W, MM_H);
+    const ground = images[M.ground];
+    if (ground) {
+      mmCtx.imageSmoothingEnabled = true;
+      mmCtx.drawImage(ground, ox, oy, GW * s, GH * s);
+    } else {
+      mmCtx.fillStyle = "#0e1a24"; mmCtx.fillRect(ox, oy, GW * s, GH * s);
+    }
+    const w2m = (wx, wy) => ({ x: ox + wx * s, y: oy + wy * s });
+    // 寻路路线
+    if (player.navPath && player.navPath.length) {
+      const pts = [{ x: player.wx, y: player.wy }, ...player.navPath];
+      mmCtx.strokeStyle = "rgba(120,178,255,.95)"; mmCtx.lineWidth = 1.3;
+      mmCtx.beginPath();
+      pts.forEach((p, i) => { const m = w2m(p.x, p.y); if (i) mmCtx.lineTo(m.x, m.y); else mmCtx.moveTo(m.x, m.y); });
+      mmCtx.stroke();
+    }
+    // 建筑点（按分组着色）
+    for (const b of D.buildings) {
+      const w = gridToWorld(b.grid[0] + b.grid[2] / 2, b.grid[1] + b.grid[3] / 2);
+      const m = w2m(w.x, w.y);
+      mmCtx.fillStyle = GROUP_COLOR[b.group] || "#9fb4d8";
+      mmCtx.fillRect(m.x - 1.6, m.y - 1.6, 3.2, 3.2);
+    }
+    // 当前视野框
+    const c0 = w2m(s2wX(0), s2wY(0));
+    const c1 = w2m(s2wX(window.innerWidth), s2wY(window.innerHeight));
+    mmCtx.fillStyle = "rgba(255,255,255,.07)";
+    mmCtx.fillRect(c0.x, c0.y, c1.x - c0.x, c1.y - c0.y);
+    mmCtx.strokeStyle = "rgba(255,255,255,.75)"; mmCtx.lineWidth = 1;
+    mmCtx.strokeRect(c0.x, c0.y, c1.x - c0.x, c1.y - c0.y);
+    // 角色点（脉冲）
+    const pm = w2m(player.wx, player.wy);
+    const pulse = 1 + 0.25 * Math.sin(performance.now() / 200);
+    mmCtx.fillStyle = "rgba(255,210,90,.25)";
+    mmCtx.beginPath(); mmCtx.arc(pm.x, pm.y, 5 * pulse, 0, 7); mmCtx.fill();
+    mmCtx.fillStyle = "#ffd25a";
+    mmCtx.beginPath(); mmCtx.arc(pm.x, pm.y, 3, 0, 7); mmCtx.fill();
+    mmCtx.strokeStyle = "#ffffff"; mmCtx.lineWidth = 1;
+    mmCtx.beginPath(); mmCtx.arc(pm.x, pm.y, 3, 0, 7); mmCtx.stroke();
+  }
+  mmCanvas.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    const rect = mmCanvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (MM_W / rect.width);
+    const my = (e.clientY - rect.top) * (MM_H / rect.height);
+    const { s, ox, oy } = mmTransform();
+    const wx = (mx - ox) / s, wy = (my - oy) / s;
+    follow = false; updateFollowBtn();
+    view.x = window.innerWidth / 2 - wx * view.zoom;
+    view.y = window.innerHeight / 2 - wy * view.zoom;
+  });
+
   function render() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
@@ -468,6 +536,7 @@
       }
     }
     drawLabels();   // 建筑名标签（UI 最上层）
+    drawMinimap();  // 左下角小地图
   }
 
   let last = performance.now();

@@ -12,6 +12,10 @@ import {
 
 const { ccclass } = _decorator;
 const UI = Layers.Enum.UI_2D;
+const MM_COLOR: Record<string, [number, number, number]> = {
+  teaching: [232, 118, 107], public: [240, 178, 76], sports: [95, 180, 214],
+  dining: [123, 209, 138], gate: [201, 160, 220], nature: [143, 191, 127]
+};
 
 /** 唯一入口：挂到场景任意节点即可（无 Canvas 时会自动创建）。运行时自动生成整张等距地图。 */
 @ccclass('CampusBootstrap')
@@ -44,6 +48,13 @@ export class CampusBootstrap extends Component {
   private currentBuilding: CampusBuilding | null = null;
   private pathGfx: Graphics | null = null;
   private navTip: Label | null = null;
+
+  // 小地图
+  private groundSF: SpriteFrame | null = null;
+  private mmGfx: Graphics | null = null;
+  private mmDrawW = 216;
+  private mmDrawH = 111;
+  private mmCY = -8;
 
   // 建筑名标签
   private labelNodes: { b: CampusBuilding; root: Node; label: Label }[] = [];
@@ -143,6 +154,7 @@ export class CampusBootstrap extends Component {
     console.log('[数字校园] 加载地面底图…');
     const gsf = await this.loadSF(META.ground);
     gsf.texture.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.LINEAR);
+    this.groundSF = gsf;
     const gNode = this.makeSpriteNode(gsf, 'Ground');
     gNode.getComponent(UITransform)!.setContentSize(GROUND_W, GROUND_H);
     gNode.setPosition(0, 0, 0);
@@ -187,6 +199,7 @@ export class CampusBootstrap extends Component {
         ' 栋，请检查 assets/resources/sprites 下图片是否齐全、文件夹名是否为小写 resources');
     }
     this.buildLabels();
+    this.buildMinimap();
     this.sortSprites();
   }
 
@@ -230,6 +243,107 @@ export class CampusBootstrap extends Component {
       root.active = true;
       root.setPosition(ux, uy, 0);
     }
+  }
+
+  // ---------- 小地图导航 ----------
+  private buildMinimap() {
+    const s = Math.min(216 / GROUND_W, 111 / GROUND_H);
+    this.mmDrawW = GROUND_W * s;
+    this.mmDrawH = GROUND_H * s;
+    const W = 236, H = 150;
+    const root = new Node('Minimap');
+    root.layer = UI;
+    root.addComponent(UITransform).setContentSize(W, H);
+    const bg = root.addComponent(Graphics);
+    bg.fillColor = new Color(18, 26, 38, 224);
+    bg.roundRect(-W / 2, -H / 2, W, H, 12); bg.fill();
+    bg.strokeColor = new Color(120, 170, 255, 90); bg.lineWidth = 1; bg.stroke();
+    // 标题
+    const tn = new Node('Title'); tn.layer = UI;
+    tn.addComponent(UITransform).setContentSize(W - 24, 20);
+    const tl = tn.addComponent(Label);
+    tl.string = '校园导览 · 点击定位视角'; tl.fontSize = 13; tl.lineHeight = 16;
+    tl.color = new Color(156, 196, 255);
+    tl.horizontalAlign = Label.HorizontalAlign.LEFT;
+    tn.getComponent(UITransform)!.setAnchorPoint(0, 0.5);
+    tn.setPosition(-W / 2 + 12, H / 2 - 17, 0);
+    root.addChild(tn);
+    // 地面缩略
+    if (this.groundSF) {
+      const gn = new Node('MMGround'); gn.layer = UI;
+      gn.addComponent(UITransform).setContentSize(this.mmDrawW, this.mmDrawH);
+      const gs = gn.addComponent(Sprite);
+      gs.spriteFrame = this.groundSF; gs.sizeMode = Sprite.SizeMode.CUSTOM;
+      gn.setPosition(0, this.mmCY, 0);
+      root.addChild(gn);
+    }
+    // 覆盖层（路线 / 建筑点 / 视野框 / 角色点）
+    const ov = new Node('MMOverlay'); ov.layer = UI;
+    ov.addComponent(UITransform).setContentSize(W, H);
+    this.mmGfx = ov.addComponent(Graphics);
+    root.addChild(ov);
+    // 位置：左下角
+    const vs = this.viewSize();
+    root.setPosition(-vs.x / 2 + 18 + W / 2, -vs.y / 2 + 16 + H / 2, 0);
+    // 点击：主视角飞到该点
+    root.on(Node.EventType.TOUCH_END, (e: EventTouch) => {
+      const ui = e.getUILocation();
+      const loc = root.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
+      const wx = (loc.x / this.mmDrawW + 0.5) * GROUND_W;
+      const wy = (0.5 - (loc.y - this.mmCY) / this.mmDrawH) * GROUND_H;
+      if (wx < 0 || wx > GROUND_W || wy < 0 || wy > GROUND_H) return;
+      this.follow = false; this.updateFollowBtn();
+      const lp = imageToLocal(wx, wy);
+      this.content.setPosition(-lp.x * this.zoom, -lp.y * this.zoom, 0);
+    }, this);
+    this.canvas.addChild(root);
+  }
+  private updateMinimap() {
+    const g = this.mmGfx;
+    if (!g) return;
+    g.clear();
+    const toMM = (wx: number, wy: number) => new Vec2(
+      (wx / GROUND_W - 0.5) * this.mmDrawW,
+      (0.5 - wy / GROUND_H) * this.mmDrawH + this.mmCY
+    );
+    // 寻路路线
+    if (this.navPath && this.navPath.length) {
+      const pts = [new Vec2(this.playerImg.x, this.playerImg.y), ...this.navPath];
+      g.strokeColor = new Color(120, 178, 255, 240); g.lineWidth = 1.3;
+      pts.forEach((p, i) => { const m = toMM(p.x, p.y); if (i) g.lineTo(m.x, m.y); else g.moveTo(m.x, m.y); });
+      g.stroke();
+    }
+    // 建筑点
+    for (const b of BUILDINGS) {
+      const c = gridToImage(b.grid[0] + b.grid[2] / 2, b.grid[1] + b.grid[3] / 2);
+      const m = toMM(c.x, c.y);
+      const col = MM_COLOR[b.group] || [159, 180, 216];
+      g.fillColor = new Color(col[0], col[1], col[2], 255);
+      g.rect(m.x - 1.6, m.y - 1.6, 3.2, 3.2); g.fill();
+    }
+    // 视野框
+    const vs = this.viewSize();
+    const cp = this.content.position;
+    const ui2img = (sx: number, sy: number) => {
+      const ux = sx - vs.x / 2, uy = sy - vs.y / 2;
+      return localToImage((ux - cp.x) / this.zoom, (uy - cp.y) / this.zoom);
+    };
+    const corners = [ui2img(0, 0), ui2img(vs.x, 0), ui2img(0, vs.y), ui2img(vs.x, vs.y)];
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    corners.forEach(c => {
+      minX = Math.min(minX, c.x); maxX = Math.max(maxX, c.x);
+      minY = Math.min(minY, c.y); maxY = Math.max(maxY, c.y);
+    });
+    const pTop = toMM(minX, minY), pBot = toMM(maxX, maxY);
+    const rx = Math.min(pTop.x, pBot.x), ry = Math.min(pTop.y, pBot.y);
+    const rw = Math.abs(pBot.x - pTop.x), rh = Math.abs(pBot.y - pTop.y);
+    g.fillColor = new Color(255, 255, 255, 18); g.rect(rx, ry, rw, rh); g.fill();
+    g.strokeColor = new Color(255, 255, 255, 190); g.lineWidth = 1; g.rect(rx, ry, rw, rh); g.stroke();
+    // 角色点
+    const pm = toMM(this.playerImg.x, this.playerImg.y);
+    g.fillColor = new Color(255, 210, 90, 70); g.circle(pm.x, pm.y, 5); g.fill();
+    g.fillColor = new Color(255, 210, 90, 255); g.circle(pm.x, pm.y, 3); g.fill();
+    g.strokeColor = new Color(255, 255, 255, 255); g.lineWidth = 1; g.circle(pm.x, pm.y, 3); g.stroke();
   }
 
   private makeSpriteNode(sf: SpriteFrame, name: string): Node {
@@ -573,6 +687,7 @@ export class CampusBootstrap extends Component {
     this.updatePlayerFrame();
     this.drawPath();
     this.updateLabels();
+    this.updateMinimap();
     this.sortSprites();
     if (this.navTip && this.navTipUntil > 0 && this.elapsed > this.navTipUntil) {
       this.navTip.node.active = false; this.navTipUntil = -1;
