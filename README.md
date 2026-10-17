@@ -29,10 +29,14 @@
 
 ## 快速开始
 
-### 网页预览器（开箱即用）
+### 在线访问（GitHub Pages，最省事）
+浏览器直接打开，无需安装、电脑手机均可：**https://Guzifeng0613.github.io/digital-campus/**
+由 `.github/workflows/deploy.yml` 在每次 push 到 `main` 后自动发布；首次开启需在仓库 **Settings → Pages → Source** 选择 **GitHub Actions**。
+
+### 本地运行（网页预览器，开箱即用）
 - **启动本地服务（推荐）**：在 `03_地图预览器/` 目录双击一键启动脚本——Windows 用 `启动网页端.bat`、macOS 用 `启动网页端.command`、Linux 运行 `./启动网页端.sh`。会自动打开浏览器，并打印局域网地址，**同一 WiFi 下的手机/平板也能访问**。零依赖，Python 或 Node 任一即可；也可命令行 `python3 server.py`（优先）或 `node server.js`（兜底）。
 - **直接打开（无需服务）**：双击 `index.html` 也可离线运行，区别是没有局域网访问。
-- 操作：`WASD / 方向键` 移动角色，`拖拽` 平移地图，`滚轮` 缩放，`点击建筑` 查看点位，`点击空地` 自动寻路，左下角小地图点击定位。
+- 操作：电脑 `WASD / 方向键` 移动、`拖拽` 平移、`滚轮` 缩放；手机**单指拖动、点空地寻路、双指捏合缩放、右下摇杆移动**；`点击建筑` 查看点位，左下角小地图点击定位。
 
 ### Cocos Creator 3.8
 1. Cocos Dashboard → 添加 → 选择 `04_Cocos工程/`，用 **3.8.x** 打开。
