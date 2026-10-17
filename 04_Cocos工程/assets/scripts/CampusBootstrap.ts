@@ -38,14 +38,38 @@ export class CampusBootstrap extends Component {
   private touchStart = new Vec2();
 
   async start() {
-    const ui = this.ensureCanvas();
-    this.canvas = ui.canvas; this.camera = ui.camera;
-    this.buildContent();
-    this.buildHUD();
-    await this.buildMap();
-    this.buildPlayer();
-    this.centerView();
-    this.bindInput();
+    try {
+      console.log('%c[数字校园] 开始初始化…', 'color:#2d6cdf');
+      const ui = this.ensureCanvas();
+      this.canvas = ui.canvas; this.camera = ui.camera;
+      console.log('[数字校园] Canvas/相机就绪');
+      this.buildContent();
+      this.buildHUD();
+      await this.buildMap();
+      this.buildPlayer();
+      this.centerView();
+      this.bindInput();
+      console.log('%c[数字校园] 构建完成：共 ' + this.buildingNodes.length +
+        ' 栋建筑。WASD 移动 / 滚轮缩放 / 拖拽平移 / 点击建筑查看信息', 'color:#2ecc71');
+    } catch (err) {
+      console.error('[数字校园] 初始化失败：', err);
+      this.showError(err);
+    }
+  }
+
+  private showError(err: any) {
+    try {
+      if (!this.canvas) return;
+      const n = new Node('ErrorTip'); n.layer = UI;
+      n.addComponent(UITransform).setContentSize(700, 90);
+      const l = n.addComponent(Label);
+      l.string = '数字校园初始化失败，请按 F12 查看控制台：\n' +
+        (err && err.message ? err.message : String(err));
+      l.fontSize = 22; l.lineHeight = 30; l.color = new Color(255, 130, 130);
+      l.overflow = Label.Overflow.SHRINK;
+      n.setPosition(0, 0, 0);
+      this.canvas.addChild(n);
+    } catch (e) { /* 忽略 */ }
   }
 
   // ---------- 场景与相机 ----------
@@ -97,6 +121,7 @@ export class CampusBootstrap extends Component {
 
   private async buildMap() {
     // 地面
+    console.log('[数字校园] 加载地面底图…');
     const gsf = await this.loadSF(META.ground);
     gsf.texture.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.LINEAR);
     const gNode = this.makeSpriteNode(gsf, 'Ground');
@@ -105,8 +130,12 @@ export class CampusBootstrap extends Component {
     gNode.getComponent(Sprite)!.sizeMode = Sprite.SizeMode.CUSTOM;
     this.content.addChild(gNode);
 
-    // 建筑（并行加载）
-    const sfs = await Promise.all(BUILDINGS.map(b => this.loadSF(b.res).catch(() => null)));
+    // 建筑（并行加载，单个失败不阻断）
+    console.log('[数字校园] 加载 ' + BUILDINGS.length + ' 栋建筑资源…');
+    const sfs = await Promise.all(BUILDINGS.map(b => this.loadSF(b.res).catch((err) => {
+      console.error('[数字校园] 资源加载失败：' + b.res + '（' + b.name + '）', err);
+      return null;
+    })));
     BUILDINGS.forEach((b, i) => {
       const src = sfs[i];
       if (!src) return;
@@ -126,6 +155,10 @@ export class CampusBootstrap extends Component {
       this.content.addChild(node);
       this.buildingNodes.push({ b, node });
     });
+    if (this.buildingNodes.length < BUILDINGS.length) {
+      console.warn('[数字校园] 仅加载 ' + this.buildingNodes.length + '/' + BUILDINGS.length +
+        ' 栋，请检查 assets/resources/sprites 下图片是否齐全、文件夹名是否为小写 resources');
+    }
     this.sortSprites();
   }
 
