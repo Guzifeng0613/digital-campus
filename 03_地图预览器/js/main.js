@@ -54,6 +54,18 @@
     })));
   }
 
+  // ---------- chibi 像素角色帧（4方向×4帧） ----------
+  const playerFrames = {};
+  function loadPlayerFrames() {
+    const dirs = ["down", "up", "left", "right"];
+    return Promise.all(dirs.map(dir => Promise.all([0, 1, 2, 3].map(f => new Promise(res => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = () => res(null);
+      img.src = "img/player/player_" + dir + "_" + f + ".png";
+    }))).then(arr => { playerFrames[dir] = arr; })));
+  }
+
   // ---------- 角色 ----------
   const GATE_S = D.buildings.find(b => b.id === "GATE-S");
   // 起点：南门内侧
@@ -177,68 +189,29 @@
     follow = false; centerView(); updateFollowBtn();
   };
 
-  // ---------- 角色像素小人 ----------
+  // ---------- chibi 像素角色帧 ----------
   function drawPlayer() {
     const g = worldToGrid(player.wx, player.wy);
     const sx = w2sX(player.wx), sy = w2sY(player.wy);
-    const H = 64 * view.zoom;                 // 世界像素高
-    const u = H / 24;                         // 像素块
-    if (u < 0.35) {                           // 太小只画点
-      ctx.fillStyle = "#e2503a";
+    const z = view.zoom;
+    if (z < 0.12) {                           // 远景只画点
+      ctx.fillStyle = "#5b4a6b";
       ctx.beginPath(); ctx.arc(sx, sy, 3.5, 0, 7); ctx.fill();
       return { depth: g.gx + g.gy };
     }
-    const swing = player.moving ? Math.sin(player.phase) : 0;
-    const flip = player.facing === "left" ? -1 : 1;
-    const back = player.facing === "up";
-    const w = 11 * u;
-    const cx = sx, footY = sy;
-    ctx.save();
-    ctx.translate(cx, footY);
-    if (flip === -1) ctx.scale(-1, 1);
+    const fw = 64 * z, fh = 80 * z;           // 帧图世界尺寸 64×80
+    const frames = playerFrames[player.facing];
+    const fi = player.moving ? (Math.floor(player.phase) % 4) : 0;
+    const pimg = frames && frames[fi] ? frames[fi] : null;
+    const oldSmooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = z < 0.85;     // 放大走像素硬边
     // 影子
-    ctx.fillStyle = "rgba(20,30,40,.32)";
-    ctx.beginPath(); ctx.ellipse(0, 1.5 * u, 6 * u, 2.6 * u, 0, 0, 7); ctx.fill();
-    // 腿（走路摆动）
-    const legS = swing * 2.2 * u;
-    ctx.fillStyle = "#2b3450";
-    ctx.fillRect(-3 * u - 1, -6 * u - legS, 3 * u, 6 * u + legS);
-    ctx.fillRect(0.4 * u, -6 * u + legS, 3 * u, 6 * u - legS);
-    // 鞋
-    ctx.fillStyle = "#1a2138";
-    ctx.fillRect(-3.4 * u - 1, -1.6 * u - legS, 3.6 * u, 1.7 * u);
-    ctx.fillRect(0.4 * u, -1.6 * u + legS, 3.6 * u, 1.7 * u);
-    // 身体（上衣）
-    ctx.fillStyle = "#d94f3a";
-    ctx.fillRect(-3.6 * u, -14 * u, 7.2 * u, 8.4 * u);
-    ctx.fillStyle = "#b83c2b";
-    ctx.fillRect(-3.6 * u, -8 * u, 7.2 * u, 1.4 * u);
-    // 书包带
-    if (!back) { ctx.fillStyle = "#f2c79b"; ctx.fillRect(-1.2 * u, -14 * u, 2.4 * u, 8 * u); }
-    // 手臂
-    ctx.fillStyle = "#c8432f";
-    const armS = swing * 1.6 * u;
-    ctx.fillRect(-4.7 * u, -13.4 * u + armS, 1.8 * u, 7 * u);
-    ctx.fillRect(3 * u, -13.4 * u - armS, 1.8 * u, 7 * u);
-    // 头
-    ctx.fillStyle = "#f2c79b";
-    ctx.fillRect(-2.8 * u, -20 * u, 5.6 * u, 6 * u);
-    // 头发
-    ctx.fillStyle = "#3a2a1c";
-    ctx.fillRect(-3 * u, -20.6 * u, 6 * u, 2.4 * u);
-    ctx.fillRect(-3 * u, -18.4 * u, 1 * u, 1.6 * u);
-    ctx.fillRect(2 * u, -18.4 * u, 1 * u, 1.6 * u);
-    if (!back) {
-      // 眼睛（朝右/下时）
-      ctx.fillStyle = "#272032";
-      if (player.facing === "right") {
-        ctx.fillRect(1.2 * u, -17.2 * u, 1.1 * u, 1.1 * u);
-      } else if (player.facing === "down") {
-        ctx.fillRect(-1.8 * u, -17.2 * u, 1.1 * u, 1.1 * u);
-        ctx.fillRect(0.8 * u, -17.2 * u, 1.1 * u, 1.1 * u);
-      }
+    ctx.fillStyle = "rgba(20,30,40,.28)";
+    ctx.beginPath(); ctx.ellipse(sx, sy + 2 * z, 14 * z, 5 * z, 0, 0, 7); ctx.fill();
+    if (pimg) {
+      ctx.drawImage(pimg, sx - fw / 2, sy - fh, fw, fh);  // 底部对齐脚点
     }
-    ctx.restore();
+    ctx.imageSmoothingEnabled = oldSmooth;
     return { depth: g.gx + g.gy };
   }
 
@@ -303,7 +276,7 @@
   resize();
   centerView();
   updateFollowBtn();
-  loadAll().then(() => {
+  loadAll().then(loadPlayerFrames).then(() => {
     document.getElementById("loading").style.display = "none";
     requestAnimationFrame(frame);
   });

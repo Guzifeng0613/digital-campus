@@ -208,8 +208,8 @@ export class CampusBootstrap extends Component {
     this.player = new Node('Player');
     this.player.layer = UI;
     const ut = this.player.addComponent(UITransform);
-    ut.setContentSize(64, 64);
-    ut.setAnchorPoint(0.5, 0.81);          // 锚点在鞋底（帧图 64 高，鞋在 y≈52）
+    ut.setContentSize(64, 80);
+    ut.setAnchorPoint(0.5, 0);             // 锚点在鞋底（帧图底部对齐脚点）
     this.playerSprite = this.player.addComponent(Sprite);
     this.playerSprite.sizeMode = Sprite.SizeMode.CUSTOM;
     this.pg = this.player.addComponent(Graphics);  // 帧加载失败时的兜底绘制
