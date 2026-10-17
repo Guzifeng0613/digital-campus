@@ -15,7 +15,10 @@ os.makedirs(OUTDIR, exist_ok=True)
 all_recs = C.build_records()
 
 def render_one(bid):
-    rec = [r for r in all_recs if r["id"] == bid]
+    if bid == "LAB":
+        rec = [r for r in all_recs if r["id"].startswith("LAB-")]
+    else:
+        rec = [r for r in all_recs if r["id"] == bid]
     if not rec:
         print("missing", bid); return
     def only():
@@ -35,13 +38,17 @@ def render_one(bid):
     R.DRAW_LABELS = False    # 去掉编号徽章
     R.render()               # 用干净设置重渲一次
     img = Image_open_framework()
-    b = rec[0]
-    gx, gy, gw, gh = b["grid"]
-    floors = R.STYLE.get(bid, {}).get("floors", 4)
+    # 群组（LAB）用所有成员的包围盒；单栋用自身 grid
+    gx0 = min(r["grid"][0] for r in rec)
+    gy0 = min(r["grid"][1] for r in rec)
+    gx1 = max(r["grid"][0]+r["grid"][2] for r in rec)
+    gy1 = max(r["grid"][1]+r["grid"][3] for r in rec)
+    gx, gy, gw, gh = gx0, gy0, gx1-gx0, gy1-gy0
+    floors = max(R.STYLE.get(r["id"], {}).get("floors", 4) for r in rec)
     h = R.FLOOR_H * floors
     # 异形建筑额外留量（弧形/椭圆/小横杠超出 grid）
     extra = {"TEACH-1": 260, "GYM": 220, "FIELD-N": 200, "FIELD-W": 200,
-             "LIB": 180, "ACT": 180, "ENG-TRAIN": 180}.get(bid, 150)
+             "LIB": 180, "ACT": 200, "ENG-TRAIN": 180, "LAB": 220}.get(bid, 150)
     minx, miny, _, _ = R.iso_bounds()
     OX, OY = -minx + 280, -miny + 210
     def P(wx, wy):
