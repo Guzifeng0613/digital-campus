@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>北化昌平校区 · 等距像素数字校园</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; }
+  html,body { width:100%; height:100%; overflow:hidden;
+    background:radial-gradient(120% 120% at 50% 38%, #1b2740 0%, #101827 55%, #0b101a 100%);
+    font-family:"PingFang SC","Microsoft YaHei",sans-serif; }
+  #game { display:block; width:100vw; height:100vh; cursor:grab; image-rendering:pixelated; }
+  #game.dragging { cursor:grabbing; }
+
+  .hud { position:fixed; z-index:10; color:#e9f0ff; }
+  #title {
+    top:16px; left:16px; padding:12px 16px; border-radius:12px;
+    background:rgba(18,26,38,.82); backdrop-filter:blur(6px);
+    border:1px solid rgba(120,170,255,.25); box-shadow:0 6px 24px rgba(0,0,0,.4);
+  }
+  #title h1 { font-size:16px; font-weight:700; letter-spacing:.5px; }
+  #title .sub { margin-top:4px; font-size:12px; color:#9fb4d8; }
+
+  #help {
+    bottom:16px; left:16px; padding:10px 14px; font-size:12px; line-height:1.9;
+    border-radius:12px; background:rgba(18,26,38,.78); backdrop-filter:blur(6px);
+    border:1px solid rgba(120,170,255,.2); color:#c8d6ee;
+  }
+  #help b { color:#ffd27a; }
+  .key { display:inline-block; min-width:18px; padding:0 4px; margin:0 1px; text-align:center;
+    border-radius:4px; background:#2b3a52; border:1px solid #42587a; font-size:11px; color:#fff; }
+
+  #btns { top:16px; right:16px; display:flex; gap:8px; }
+  .btn {
+    padding:9px 14px; border-radius:10px; cursor:pointer; font-size:13px; color:#e9f0ff;
+    background:rgba(28,40,58,.9); border:1px solid rgba(120,170,255,.3);
+    transition:background .15s;
+  }
+  .btn:hover { background:rgba(46,66,96,.95); }
+  .btn.active { background:#2d6cdf; border-color:#6ea8ff; }
+
+  #loading {
+    position:fixed; inset:0; z-index:50; display:flex; flex-direction:column; gap:14px;
+    align-items:center; justify-content:center; background:#0f141b; color:#cfe0ff;
+  }
+  .spinner { width:42px; height:42px; border:4px solid #2a3a52; border-top-color:#5b9bff;
+    border-radius:50%; animation:spin 1s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  #loading .pct { font-size:13px; color:#8fa6cc; }
+
+  #info {
+    position:fixed; z-index:20; right:16px; top:70px; width:300px; max-width:calc(100vw - 32px);
+    border-radius:14px; overflow:hidden; background:rgba(18,26,38,.93); backdrop-filter:blur(8px);
+    border:1px solid rgba(120,170,255,.3); box-shadow:0 12px 40px rgba(0,0,0,.5);
+    transform:translateX(340px); transition:transform .28s cubic-bezier(.2,.8,.2,1);
+  }
+  #info.show { transform:translateX(0); }
+  #info .head { padding:14px 16px; background:linear-gradient(135deg,#2d6cdf,#1d4a9e); }
+  #info .no { font-size:12px; opacity:.85; }
+  #info .nm { font-size:18px; font-weight:700; margin-top:2px; }
+  #info .body { padding:14px 16px; font-size:13px; line-height:1.7; color:#cdd9ee; }
+  #info .tag { display:inline-block; margin-bottom:8px; padding:2px 9px; font-size:11px; border-radius:20px;
+    background:rgba(91,155,255,.18); border:1px solid rgba(91,155,255,.4); color:#9cc4ff; }
+  #info .close { position:absolute; top:10px; right:12px; cursor:pointer; font-size:20px; color:#dce8ff; line-height:1; }
+  #hint { position:fixed; bottom:16px; right:16px; z-index:10; font-size:12px; color:#7f93b8;
+    background:rgba(18,26,38,.6); padding:6px 10px; border-radius:8px; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <div>正在加载数字校园…</div>
+  <div class="pct" id="pct">0%</div>
+</div>
+
+<div class="hud" id="title">
+  <h1>北京化工大学 · 昌平校区</h1>
+  <div class="sub">等距 2.5D 像素数字校园 · 16 点位</div>
+</div>
+
+<div class="hud" id="btns">
+  <div class="btn" id="btnFollow" title="相机跟随角色">跟随角色</div>
+  <div class="btn" id="btnReset" title="重置视角">重置视角</div>
+</div>
+
+<div class="hud" id="help">
+  <div><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> / 方向键 <b>移动角色</b></div>
+  <div>拖拽 <b>平移地图</b> · 滚轮 <b>缩放</b></div>
+  <div>点击建筑 <b>查看点位</b></div>
+</div>
+<div id="hint"></div>
+
+<div id="info">
+  <div class="head"><div class="close" id="infoClose">×</div>
+    <div class="no" id="iNo"></div><div class="nm" id="iName"></div>
+  </div>
+  <div class="body">
+    <span class="tag" id="iTag"></span>
+    <div id="iDesc"></div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
