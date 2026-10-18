@@ -1,0 +1,49 @@
+{
+  "batch": "C",
+  "branch": "feat/td/assets-c",
+  "spec": "docs/topdown-spec.md v1",
+  "grain": 4,
+  "tile_px": 48,
+  "anchor_rule": "sprite/decor anchor = bottom-center of image; drawImage(img, A.x - w/2, A.y - h). Gates use exact spec 2.3 canvas sizes.",
+  "palette_ref": "palette_swatch.png (spec section 3)",
+  "tiles": [
+    {"file": "grass_a.png", "size": [48,48], "seamless": true, "use": "草地主 tile，#8fbc5a 底 + #79a8/#a8cf6a 斑点"},
+    {"file": "grass_b.png", "size": [48,48], "seamless": true, "use": "草地变体，混入 #c2e07f 浅斑，与 grass_a 交替"},
+    {"file": "dirt.png", "size": [48,48], "seamless": true, "use": "步行泥土路 #d9b36c + #c09a52 斑点（w<7 道路）"},
+    {"file": "pave.png", "size": [48,48], "seamless": true, "use": "车行硬铺装 #cbb59a + 淡 #b39c7e 板缝（w>=7 道路）"},
+    {"file": "water.png", "size": [48,48], "seamless": true, "use": "水面 #5a9ec4 + #8fc4e0 涟漪，可与 grass_a 平铺"},
+    {"file": "jct.png", "size": [48,48], "seamless": true, "use": "路口/道路重叠格：dirt+pave 混合 mottle，无缝"},
+    {"file": "jct_cross.png", "size": [48,48], "seamless": false, "use": "十字交叉路口装饰块（草地底+铺装十字臂），单格摆放不做无缝平铺"},
+    {"file": "jct_t.png", "size": [48,48], "seamless": false, "use": "丁字路口装饰块（铺装臂向上开口），单格摆放"},
+    {"file": "grass_dirt_edge.png", "size": [48,48], "seamless": true, "use": "草->泥土过渡边：上方草地、下方泥土，波浪交界（交界左右两端等高可横向平铺）。边方向=草地在北(上)/泥土在南(下)，用于消除路面锯齿"},
+    {"file": "grass_pave_edge.png", "size": [48,48], "seamless": true, "use": "草->硬铺装过渡边：上方草地、下方铺装，同上规则"}
+  ],
+  "sprites": [
+    {"file": "GATE-S.png", "size": [608,316], "anchor": "bottom-center", "footprint": "grid [76.9,260.5,12.66,5.06]，锚点(3995.0,12746.9)", "rise": 48, "use": "南门敞开式入口：刻字巨石(红「北京化工大学」)+两侧花坛+国旗杆+2 红灯笼柱；开口朝北(画面上方=校园内)。本资产唯一允许文字。", "note": "无门扇/门楼；地面为灰色铺装带，已含在 sprite 内。"},
+    {"file": "GATE-E.png", "size": [184,408], "anchor": "bottom-center", "footprint": "grid [114.88,165.52,3.8,6.96]，锚点(5605.4,8279.0)", "rise": 72, "use": "东门车行伸缩门：两侧灰门柱+银色 accordion 栅栏门(闭合态)。门体在画布下部，上方透明为脚印地。", "note": "开合动画：内核横向收拢中间栅栏门即可，未另出 open 帧。"},
+    {"file": "GATE-W.png", "size": [184,436], "anchor": "bottom-center", "footprint": "grid [4.1,134.5,3.8,7.6]，锚点(288.0,6820.8)", "rise": 72, "use": "西门同款伸缩门，门柱带红砖色 #a83c30 饰板+左侧小岗亭檐，与东门成套可区分。", "note": "开合动画同 GATE-E；未另出 open 帧。"}
+  ],
+  "decor": [
+    {"file": "tree_pine.png", "size": [64,112], "anchor": "bottom-center", "use": "针叶树/松柏"},
+    {"file": "tree_oak_b.png", "size": [96,112], "anchor": "bottom-center", "use": "阔叶树变体(与 tree_oak 成套)"},
+    {"file": "tree_bush.png", "size": [96,48], "anchor": "bottom-center", "use": "矮灌球"},
+    {"file": "lamp.png", "size": [32,96], "anchor": "bottom-center", "use": "路灯(暖黄灯头)"},
+    {"file": "lantern_post.png", "size": [36,96], "anchor": "bottom-center", "use": "红灯笼柱(暖黄 #ffd27a)"},
+    {"file": "flagpole.png", "size": [48,140], "anchor": "bottom-center", "use": "国旗杆(带小红旗)；南门/广场可复用"},
+    {"file": "bollard.png", "size": [36,44], "anchor": "bottom-center", "use": "车挡石柱"},
+    {"file": "bench.png", "size": [80,40], "anchor": "bottom-center", "use": "木长椅"},
+    {"file": "fence_corner.png", "size": [48,48], "anchor": "bottom-center", "use": "L 形围栏转角(木 #8a6238)，与 fence_h/v 成套"},
+    {"file": "fence_gate.png", "size": [48,48], "anchor": "bottom-center", "use": "木栅栏门缺口(闭合门扇)；开合由内核切换"},
+    {"file": "flowerbed.png", "size": [96,48], "anchor": "bottom-center", "use": "长方形木框花坛(灌木+花)"},
+    {"file": "flowerbed_corner.png", "size": [48,48], "anchor": "bottom-center", "use": "L 形花坛转角"},
+    {"file": "shrub_a.png", "size": [32,24], "anchor": "bottom-center", "use": "小灌木变体A"},
+    {"file": "shrub_b.png", "size": [32,24], "anchor": "bottom-center", "use": "小灌木变体B"}
+  ],
+  "notes_for_stage2": [
+    "tile 全部 48x48，grass/dirt/pave/water/jct 无缝可平铺；jct_cross/jct_t/edge 按需摆放。",
+    "decor 与 gate 均为 RGBA 透明底，底边中点锚点；depth 参与同 drawList 排序(depth=gy*1000+gx)。",
+    "GATE-E/W 的开合动画未出独立帧：内核将闭合态栅栏门横向平移/缩放收拢到一侧门柱即可。",
+    "南门 GATE-S 已含旗杆/灯笼/花坛，摆好后无需再叠 flagpole/lantern_post decor。",
+    "风格：星露谷暖调、#2e2418 描边、GRAIN=4 硬像素，与 TEACH-1/FIELD-N/tree_oak 一致。"
+  ]
+}
