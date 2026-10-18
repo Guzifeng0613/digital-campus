@@ -50,12 +50,17 @@
   // 全局默认 1.5；按 id 覆盖（由 overlap/road 校验脚本迭代得出，见 docs）。
   const BUILD_SCALE = 1.5;
   const BUILD_SCALE_ID = {
-    "TEACH-1": 1.15, "TEACH-2": 1.50, "LIB": 1.15, "WENLI": 1.50,
-    "LAB-TECH": 1.15, "ACT": 1.30, "CAN-YULAN": 1.50, "CAN-ZIZHU": 1.50,
+    "TEACH-1": 1.35, "TEACH-2": 1.50, "LIB": 1.32, "WENLI": 1.50,
+    "LAB-TECH": 1.32, "ACT": 1.30, "CAN-YULAN": 1.50, "CAN-ZIZHU": 1.50,
     "ENG-TRAIN": 1.35, "GYM": 1.30, "FIELD-W": 1.40, "FIELD-N": 1.40,
     "GATE-S": 1.10, "GATE-E": 1.05, "GATE-W": 1.05, "MOUNT-YUPING": 1.15
   };
-  function buildingScale(b) { return BUILD_SCALE_ID[b.id] != null ? BUILD_SCALE_ID[b.id] : BUILD_SCALE; }
+  // 无害调试钩子：URL ?scale=1 强制全局系数（用于放大前后对比截图，不影响默认）
+  const DEBUG_SCALE = parseFloat(new URLSearchParams(location.search).get("scale")) || 0;
+  function buildingScale(b) {
+    if (DEBUG_SCALE > 0) return DEBUG_SCALE;
+    return BUILD_SCALE_ID[b.id] != null ? BUILD_SCALE_ID[b.id] : BUILD_SCALE;
+  }
   // 放大后视觉 footprint（网格单位）：中心 x=fx+fw/2 不变，南缘 y=fy+fh 不变，宽 fw*s、高 fh*s（向北扩展）
   function visRect(b) {
     const s = buildingScale(b);
