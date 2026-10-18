@@ -44,36 +44,11 @@
   const gridToWorld = (gx, gy) => ({ x: gx * TILE, y: gy * TILE });
   const worldToGrid = (wx, wy) => ({ gx: wx / TILE, gy: wy / TILE });
 
-  // ---------- 程序化地面 tile（48×48 offscreen） ----------
-  function makeTile(base, speck) {
-    const c = document.createElement("canvas"); c.width = TILE; c.height = TILE;
-    const g = c.getContext("2d");
-    g.fillStyle = base; g.fillRect(0, 0, TILE, TILE);
-    // 确定性伪随机斑点（避开边缘±3，保证平铺无缝）
-    let s = base.length * 131 + base.charCodeAt(1);
-    const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
-    for (let i = 0; i < speck.n; i++) {
-      g.fillStyle = speck.colors[i % speck.colors.length];
-      const x = 3 + rnd() * (TILE - 9), y = 3 + rnd() * (TILE - 9);
-      g.fillRect(x | 0, y | 0, 3 + (rnd() * 4 | 0), 3 + (rnd() * 4 | 0));
-    }
-    return c;
-  }
-  const TILES = {
-    grass_a: makeTile("#8fbc5a", { n: 6, colors: ["#79a848", "#a8cf6a", "#79a848"] }),
-    grass_b: makeTile("#8fbc5a", { n: 6, colors: ["#c2e07f", "#a8cf6a", "#668f3d"] }),
-    dirt: makeTile("#d9b36c", { n: 8, colors: ["#c09a52", "#eccf90", "#c09a52"] }),
-    pave: makeTile("#cbb59a", { n: 5, colors: ["#b39c7e", "#ddc9ad"] }),
-    water: makeTile("#5a9ec4", { n: 5, colors: ["#3f7fa8", "#8fc4e0"] })
-  };
-  // 路口 tile = dirt 与 pave 斜纹混合
-  TILES.jct = (() => {
-    const c = document.createElement("canvas"); c.width = TILE; c.height = TILE;
-    const g = c.getContext("2d");
-    g.drawImage(TILES.pave, 0, 0);
-    g.fillStyle = "rgba(217,179,108,.55)"; g.fillRect(0, 0, TILE, TILE);
-    return c;
-  })();
+  // ---------- 地面 tile（C 批次美术 tile，48×48 无缝 PNG，BOOT 时加载） ----------
+  // 0 grass_a, 1 grass_b, 2 dirt, 3 pave, 4 jct, 5 water
+  const TILE_ORDER = ["grass_a", "grass_b", "dirt", "pave", "jct", "water"];
+  const TILES = {};
+  function tileImg(t) { return TILES[t] || TILES.grass_a; }
 
   // ---------- 格点分类（整数网格 -> tile 类型） ----------
   // 0 grass_a, 1 grass_b, 2 dirt, 3 pave, 4 jct, 5 water
@@ -171,19 +146,18 @@
   const groundPre = document.createElement("canvas");
   groundPre.width = Math.ceil(WORLD_W * PRE);
   groundPre.height = Math.ceil(WORLD_H * PRE);
-  (function buildPre() {
+  function buildPre() {
     const g = groundPre.getContext("2d");
-    // 草地底
     g.fillStyle = "#8fbc5a"; g.fillRect(0, 0, groundPre.width, groundPre.height);
     const tw = TILE * PRE;
     for (let gx = ix0; gx <= ix1; gx++) for (let gy = iy0; gy <= iy1; gy++) {
       const t = cellType[ci(gx, gy)];
-      g.drawImage([TILES.grass_a, TILES.grass_b, TILES.dirt, TILES.pave, TILES.jct, TILES.water][t],
+      g.drawImage(tileImg(TILE_ORDER[t]),
         (gx - GX0) * tw, (gy - GY0) * tw, tw + 1, tw + 1);
     }
-  })();
+  }
 
-  // ---------- 建筑 sprite 加载（样板资产；缺失时用占位方块） ----------
+  // ---------- 资产加载（16 栋 sprite / C 批 tiles+decor / D 批角色帧） ----------
   function loadImg(src) {
     return new Promise(res => {
       const im = new Image();
@@ -193,26 +167,37 @@
     });
   }
   const spriteImgs = {};
+  const SPRITE_IDS = ["TEACH-1", "TEACH-2", "LIB", "WENLI", "LAB-TECH", "ACT",
+    "CAN-YULAN", "CAN-ZIZHU", "ENG-TRAIN", "GYM", "FIELD-W", "FIELD-N",
+    "MOUNT-YUPING", "GATE-S", "GATE-E", "GATE-W"];
+  const DECOR_IDS = ["tree_pine", "tree_oak", "tree_oak_b", "tree_bush", "fence_corner",
+    "lamp", "lantern_post", "flagpole", "bollard", "bench", "flowerbed",
+    "flowerbed_corner", "shrub_a", "shrub_b"];
+  const TILE_IDS = ["grass_a", "grass_b", "dirt", "pave", "water", "jct",
+    "jct_cross", "jct_t", "grass_dirt_edge", "grass_pave_edge"];
   const BOOT = Promise.all([
-    loadImg("img/topdown/sprites/TEACH-1.png").then(im => spriteImgs["TEACH-1"] = im),
-    loadImg("img/topdown/sprites/FIELD-N.png").then(im => spriteImgs["FIELD-N"] = im),
-    loadImg("img/topdown/decor/tree_oak.png").then(im => spriteImgs["tree"] = im),
-    loadImg("img/topdown/decor/fence_h.png").then(im => spriteImgs["fence_h"] = im),
-    loadImg("img/topdown/decor/fence_v.png").then(im => spriteImgs["fence_v"] = im)
-  ]);
-  // 角色帧（沿用现有 iso chibi 四方向×4 走路帧）
-  const FRAME_W = 56, FRAME_H = 70;
-  const walkFrames = {};
-  function loadFrame(dir, f) {
+    ...SPRITE_IDS.map(id => loadImg("img/topdown/sprites/" + id + ".png").then(im => spriteImgs[id] = im)),
+    ...TILE_IDS.map(t => loadImg("img/topdown/tiles/" + t + ".png").then(im => TILES[t] = im)),
+    ...DECOR_IDS.map(t => loadImg("img/topdown/decor/" + t + ".png").then(im => spriteImgs[t] = im))
+  ]).then(() => buildPre());
+
+  // ---------- D 批角色帧：48×64，锚点脚底中心 (24,64) ----------
+  const FRAME_W = 48, FRAME_H = 64;
+  const PLAYER_DIRS = ["down", "up", "left", "right"];
+  const frames = {};   // frames[dir][kind] = [img...]  kind: walk/run/idle
+  function loadFrame(dir, kind, f) {
     return new Promise(res => {
       const im = new Image();
       im.onload = () => res(im); im.onerror = () => res(null);
-      im.src = "img/player/player_" + dir + "_" + f + ".png";
+      im.src = "img/topdown/player/" + dir + "_" + kind + (f === null ? "" : "_" + f) + ".png";
     });
   }
-  const PLAYER_DIRS = ["down", "up", "left", "right"];
   const playerLoad = Promise.all(PLAYER_DIRS.map(dir =>
-    Promise.all([0, 1, 2, 3].map(f => loadFrame(dir, f))).then(arr => walkFrames[dir] = arr)
+    Promise.all([
+      Promise.all([0, 1, 2, 3].map(f => loadFrame(dir, "walk", f))),
+      Promise.all([0, 1, 2, 3].map(f => loadFrame(dir, "run", f))),
+      loadFrame(dir, "idle", null)
+    ]).then(([w, r, idl]) => { frames[dir] = { walk: w, run: r, idle: [idl] }; })
   ));
 
   // ---------- 角色 ----------
@@ -282,14 +267,26 @@
     const [fx, fy, fw, fh] = F.rect;
     return gx > fx && gx < fx + fw && gy > fy && gy < fy + fh;
   }
+  // ---------- 东西校门伸缩门（闭合阻挡 / 接近收拢放行） ----------
+  const campusGates = ["GATE-E", "GATE-W"].map(id => {
+    const b = D.buildings.find(x => x.id === id);
+    return { id, b, open: 0, cx: b.grid[0] + b.grid[2] / 2, cy: b.grid[1] + b.grid[3] / 2 };
+  });
   function blockedAt(gx, gy, pad) {
     if (gx < GX0 || gx > GX1 || gy < GY0 || gy > GY1) return true;
     for (const b of D.buildings) {
       if (b.walkable) continue;
+      if (b.id === "GATE-E" || b.id === "GATE-W") continue;   // 校门由伸缩门逻辑控制
       const [x, y, w, h] = b.collider;
       if (gx > x - pad && gx < x + w + pad && gy > y - pad && gy < y + h + pad) return true;
     }
     for (const F of fences) if (fenceBlocked(gx, gy, F)) return true;
+    for (const g of campusGates) {
+      // 校门闭合时阻挡 collider；收拢 open 后放行
+      if (g.open > 0.5) continue;
+      const [x, y, w, h] = g.b.collider;
+      if (gx > x - pad && gx < x + w + pad && gy > y - pad && gy < y + h + pad) return true;
+    }
     return false;
   }
 
@@ -475,6 +472,11 @@
       if (nowIn && !F.inside) showZone("进入 · " + F.zone, "由入口门进入，场内可自由行走");
       F.inside = nowIn;
     }
+    // 东西伸缩门：接近门中线 ~5 格内收拢放行
+    for (const g of campusGates) {
+      const dist = Math.hypot(pg.gx - g.cx, pg.gy - g.cy);
+      g.open += ((dist < 5.5 ? 1 : 0) - g.open) * k;
+    }
   }
 
   // ---------- 输入 ----------
@@ -599,6 +601,10 @@
     document.getElementById("iName").textContent = b.name;
     document.getElementById("iTag").textContent = GROUP_CN[b.group] || b.group;
     document.getElementById("iDesc").textContent = b.desc || "（暂无介绍）";
+    const img = document.getElementById("iImg");
+    const meta = TD.sprites && TD.sprites[b.id];
+    img.src = meta ? meta.file : "";
+    img.style.visibility = meta ? "visible" : "hidden";
     document.getElementById("info").classList.add("show");
   }
   document.getElementById("infoClose").onclick = () =>
@@ -643,7 +649,7 @@
         if (gx < ix0 || gx > ix1 || gy < iy0 || gy > iy1) continue;
         const t = cellType[ci(gx, gy)];
         const tw = TILE * view.zoom;
-        ctx.drawImage([TILES.grass_a, TILES.grass_b, TILES.dirt, TILES.pave, TILES.jct, TILES.water][t],
+        ctx.drawImage(tileImg(TILE_ORDER[t]),
           w2sX(gx * TILE), w2sY(gy * TILE), tw + 1, tw + 1);
       }
     }
@@ -690,12 +696,21 @@
   function drawBuilding(b) {
     const z = view.zoom;
     const [fx, fy, fw, fh] = b.grid;
-    const an = anchorOf(b);
+    const meta = TD.sprites && TD.sprites[b.id];
+    const an = { x: (fx + fw / 2) * TILE, y: (fy + fh) * TILE + (meta ? meta.dy : 0) };
     const real = spriteImgs[b.id];
     if (real) {
-      const w = real.width * z, h = real.height * z;
+      const gate = campusGates.find(g => g.id === b.id);
+      let w = real.width * z, h = real.height * z;
+      let dx = an.x * z + view.x - w / 2;
+      if (gate) {
+        // 伸缩门：open 增大时横向向一侧门柱收拢（accordion）
+        const sc = 1 - gate.open * 0.62;
+        w = real.width * z * sc;
+        dx = an.x * z + view.x - w;   // 右缘对齐锚点（右侧门柱固定）
+      }
       ctx.imageSmoothingEnabled = z < 0.85;
-      ctx.drawImage(real, an.x * z + view.x - w / 2, an.y * z + view.y - h, w, h);
+      ctx.drawImage(real, dx, an.y * z + view.y - h, w, h);
       ctx.imageSmoothingEnabled = true;
       return;
     }
@@ -779,23 +794,39 @@
     }
   }
 
-  // ---------- 绘制：装饰树 ----------
-  const DECOR = [
-    { id: "tree", gx: 95.5, gy: 31.5 },   // FIELD-N 西北角
-    { id: "tree", gx: 107.5, gy: 31.5 },  // FIELD-N 东北侧外
-    { id: "tree", gx: 92.0, gy: 40.0 }    // 西侧
-  ];
-  function drawDecor() {
+  // ---------- 绘制：环境装饰（底边中点锚点，逐项参与深度排序） ----------
+  // 按 map_data.json 布局手布：山脚松林、两操场外围树阵、主路路灯、楼前花坛/长椅/灌木
+  const DECOR = [];
+  function addDeco(id, gx, gy) { DECOR.push({ id, gx, gy }); }
+  // 玉屏山南麓松林（gy≈41，gx 44..80）
+  for (let gx = 45; gx <= 80; gx += 4) addDeco("tree_pine", gx, 41.5 + (gx % 3));
+  // FIELD-N 外围四角树
+  addDeco("tree_oak", 92.5, 31.5); addDeco("tree_oak", 110.0, 31.5);
+  addDeco("tree_oak", 92.5, 64.5); addDeco("tree_oak_b", 110.5, 64.5);
+  addDeco("tree_bush", 101.0, 31.0); addDeco("tree_bush", 101.0, 65.0);
+  // FIELD-W 外围四角树
+  addDeco("tree_oak", 11.0, 189.0); addDeco("tree_oak", 30.5, 189.0);
+  addDeco("tree_oak_b", 11.0, 222.5); addDeco("tree_oak", 30.5, 222.5);
+  // 主路两侧路灯（南北向主路 gx≈62 与 gx≈96）
+  for (let gy = 80; gy <= 250; gy += 16) { addDeco("lamp", 60.0, gy); addDeco("lamp", 98.0, gy + 6); }
+  // TEACH-1 南入口花坛+灌木
+  addDeco("flowerbed", 70.0, 221.5); addDeco("flowerbed", 80.0, 221.5);
+  addDeco("shrub_a", 64.0, 220.0); addDeco("shrub_b", 86.0, 220.0);
+  // LIB 门前长椅+灌木
+  addDeco("bench", 84.0, 146.5); addDeco("bench", 90.0, 146.5);
+  addDeco("shrub_a", 78.0, 146.0); addDeco("shrub_b", 99.0, 146.0);
+  // 食堂/文理楼周边矮灌
+  addDeco("tree_bush", 42.0, 118.0); addDeco("tree_bush", 30.0, 150.0);
+  addDeco("shrub_a", 111.0, 155.0); addDeco("shrub_b", 38.0, 133.0);
+  function drawDecor(d) {
     const z = view.zoom;
-    for (const d of DECOR) {
-      const im = spriteImgs[d.id];
-      if (!im) continue;
-      const an = gridToWorld(d.gx, d.gy);
-      const w = im.width * z, h = im.height * z;
-      ctx.imageSmoothingEnabled = z < 0.85;
-      ctx.drawImage(im, an.x * z + view.x - w / 2, an.y * z + view.y - h, w, h);
-      ctx.imageSmoothingEnabled = true;
-    }
+    const im = spriteImgs[d.id];
+    if (!im) return;
+    const an = gridToWorld(d.gx, d.gy);
+    const w = im.width * z, h = im.height * z;
+    ctx.imageSmoothingEnabled = z < 0.85;
+    ctx.drawImage(im, an.x * z + view.x - w / 2, an.y * z + view.y - h, w, h);
+    ctx.imageSmoothingEnabled = true;
   }
 
   // ---------- 绘制：角色 ----------
@@ -809,9 +840,10 @@
       return g.gy * 1000 + g.gx;
     }
     const fw = FRAME_W * z, fh = FRAME_H * z;
-    const frames = walkFrames[player.facing];
-    const fi = player.moving ? (Math.floor(player.phase) % 4) : 0;
-    const pimg = frames && frames[fi];
+    const fset = frames[player.facing] || frames.down;
+    const seq = player.moving ? (player.running ? fset.run : fset.walk) : fset.idle;
+    const fi = player.moving ? (Math.floor(player.phase) % seq.length) : 0;
+    const pimg = seq && seq[fi];
     let bob = 0;
     if (player.moving) {
       const amp = player.running ? 3.6 : 1.8;
@@ -847,7 +879,8 @@
     ctx.font = "600 " + fs + "px 'PingFang SC','Microsoft YaHei',sans-serif";
     const h = fs + 9, padX = 8;
     for (const b of D.buildings) {
-      const an = anchorOf(b);
+      const meta = TD.sprites && TD.sprites[b.id];
+      const an = { x: (b.grid[0] + b.grid[2] / 2) * TILE, y: (b.grid[1] + b.grid[3]) * TILE + (meta ? meta.dy : 0) };
       const lx = w2sX(an.x), ly = w2sY(an.y) - (RISE[b.cat] || 120) * z - 8;
       if (lx < -80 || lx > window.innerWidth + 80 || ly < -30 || ly > window.innerHeight + 30) continue;
       const tw = ctx.measureText(b.name).width;
@@ -923,15 +956,14 @@
       drawList.push({ kind: "b", depth: an.y / TILE * 1000 + an.x / TILE, b });
     }
     for (const F of fences) drawList.push({ kind: "f", depth: F.g.cy * 1000 + F.g.cx, F });
-    // 装饰树按最深一棵树的位置参与排序（静态装饰，整体作为一层）
-    drawList.push({ kind: "d", depth: Math.max(...DECOR.map(d => d.gy)) * 1000 });
+    for (const d of DECOR) drawList.push({ kind: "d", depth: d.gy * 1000 + d.gx, d });
     const pg = worldToGrid(player.wx, player.wy);
     drawList.push({ kind: "p", depth: pg.gy * 1000 + pg.gx });
     drawList.sort((a, b) => a.depth - b.depth);
     for (const it of drawList) {
       if (it.kind === "b") drawBuilding(it.b);
       else if (it.kind === "f") drawFences(it.F);
-      else if (it.kind === "d") drawDecor();
+      else if (it.kind === "d") drawDecor(it.d);
       else if (it.kind === "p") drawPlayer();
     }
     drawLabels();
