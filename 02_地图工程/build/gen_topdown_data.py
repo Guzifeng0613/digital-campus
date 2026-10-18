@@ -15,10 +15,43 @@ data.js（等距渲染数据）保持不动；本脚本是阶段2 top-down 正�
 """
 import json
 import os
+import re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 02_地图工程/
 MAP = os.path.join(ROOT, "map_data.json")
+DATA_JS = os.path.join(ROOT, "..", "03_地图预览器", "js", "data.js")
 OUT = os.path.join(ROOT, "..", "03_地图预览器", "js", "topdown_data.js")
+
+TILE = 48
+GRAIN = 4
+RISE = {  # 立面/屋顶向北延伸高度（世界 px），见 docs/topdown-spec.md 2.2
+    "teaching": 144, "lab": 144, "library": 144, "college": 144,
+    "service": 144, "activity": 144, "canteen": 120, "gym": 96,
+    "gate": 72, "field": 0, "nature": 200,
+}
+# 接线期微调：sprite 相对锚点的 y 偏移（世界 px，正值=整体下移=偏南）
+DY_HINT = {
+    "MOUNT-YUPING": 0,   # 山体内容在画布下半部，接线后视观感再调
+}
+
+
+def build_sprite_registry():
+    """从 data.js（16 栋渲染建筑）推导每栋 sprite 元数据。"""
+    src = open(DATA_JS, encoding="utf-8").read()
+    m = re.search(r"window\.CAMPUS_DATA\s*=\s*(\{.*\})\s*;?\s*$", src, re.S)
+    campus = json.loads(m.group(1))
+    reg = {}
+    for b in campus["buildings"]:
+        fx, fy, fw, fh = b["grid"]
+        w = round(fw * TILE / GRAIN) * GRAIN
+        h = round(fh * TILE / GRAIN) * GRAIN + RISE.get(b["cat"], 120)
+        reg[b["id"]] = {
+            "file": "img/topdown/sprites/%s.png" % b["id"],
+            "w": w, "h": h,
+            "kind": b["cat"],
+            "dy": DY_HINT.get(b["id"], 0),
+        }
+    return reg
 
 
 def main():
@@ -46,6 +79,7 @@ def main():
         "roads": roads,
         "canal": D.get("canal", []),
         "nature": nature,
+        "sprites": build_sprite_registry(),
     }
 
     header = ("// 自动生成：top-down 正俯视渲染所需的网格数据（道路/运河/自然地块）。\n"

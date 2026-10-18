@@ -539,5 +539,119 @@ window.TOPDOWN_DATA = {
     37.98
    ]
   }
- ]
+ ],
+ "sprites": {
+  "FIELD-W": {
+   "file": "img/topdown/sprites/FIELD-W.png",
+   "w": 792,
+   "h": 1396,
+   "kind": "field",
+   "dy": 0
+  },
+  "GYM": {
+   "file": "img/topdown/sprites/GYM.png",
+   "w": 944,
+   "h": 1040,
+   "kind": "gym",
+   "dy": 0
+  },
+  "TEACH-1": {
+   "file": "img/topdown/sprites/TEACH-1.png",
+   "w": 2128,
+   "h": 1148,
+   "kind": "teaching",
+   "dy": 0
+  },
+  "LAB-TECH": {
+   "file": "img/topdown/sprites/LAB-TECH.png",
+   "w": 1184,
+   "h": 1784,
+   "kind": "lab",
+   "dy": 0
+  },
+  "GATE-S": {
+   "file": "img/topdown/sprites/GATE-S.png",
+   "w": 608,
+   "h": 316,
+   "kind": "gate",
+   "dy": 0
+  },
+  "GATE-E": {
+   "file": "img/topdown/sprites/GATE-E.png",
+   "w": 184,
+   "h": 408,
+   "kind": "gate",
+   "dy": 0
+  },
+  "LIB": {
+   "file": "img/topdown/sprites/LIB.png",
+   "w": 852,
+   "h": 796,
+   "kind": "library",
+   "dy": 0
+  },
+  "WENLI": {
+   "file": "img/topdown/sprites/WENLI.png",
+   "w": 548,
+   "h": 768,
+   "kind": "college",
+   "dy": 0
+  },
+  "TEACH-2": {
+   "file": "img/topdown/sprites/TEACH-2.png",
+   "w": 956,
+   "h": 980,
+   "kind": "teaching",
+   "dy": 0
+  },
+  "ACT": {
+   "file": "img/topdown/sprites/ACT.png",
+   "w": 804,
+   "h": 676,
+   "kind": "activity",
+   "dy": 0
+  },
+  "CAN-YULAN": {
+   "file": "img/topdown/sprites/CAN-YULAN.png",
+   "w": 364,
+   "h": 544,
+   "kind": "canteen",
+   "dy": 0
+  },
+  "CAN-ZIZHU": {
+   "file": "img/topdown/sprites/CAN-ZIZHU.png",
+   "w": 396,
+   "h": 696,
+   "kind": "canteen",
+   "dy": 0
+  },
+  "ENG-TRAIN": {
+   "file": "img/topdown/sprites/ENG-TRAIN.png",
+   "w": 1064,
+   "h": 1300,
+   "kind": "service",
+   "dy": 0
+  },
+  "FIELD-N": {
+   "file": "img/topdown/sprites/FIELD-N.png",
+   "w": 700,
+   "h": 1428,
+   "kind": "field",
+   "dy": 0
+  },
+  "MOUNT-YUPING": {
+   "file": "img/topdown/sprites/MOUNT-YUPING.png",
+   "w": 2096,
+   "h": 1384,
+   "kind": "nature",
+   "dy": 0
+  },
+  "GATE-W": {
+   "file": "img/topdown/sprites/GATE-W.png",
+   "w": 184,
+   "h": 436,
+   "kind": "gate",
+   "dy": 0
+  }
+ }
 };
