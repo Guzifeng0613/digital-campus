@@ -19,7 +19,7 @@ import socket
 import threading
 import webbrowser
 
-DEFAULT_PORT = 8080
+DEFAULT_PORT = 8090
 ROOT = os.path.dirname(os.path.abspath(__file__))
 
 # 需要显式声明的 MIME（避免个别系统把 .js 当成 text/plain 导致脚本不执行）
