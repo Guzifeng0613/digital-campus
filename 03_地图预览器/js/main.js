@@ -56,33 +56,7 @@
   const ix1 = Math.ceil(GX1), iy1 = Math.ceil(GY1);
   const cw = ix1 - ix0 + 1, ch = iy1 - iy0 + 1;
   const cellType = new Uint8Array(cw * ch);
-  const roadCount = new Uint16Array(cw * ch);
-  const roadPaved = new Uint8Array(cw * ch);
   function ci(gx, gy) { return (gy - iy0) * cw + (gx - ix0); }
-  function distToSeg(px, py, a, b) {
-    const dx = b[0] - a[0], dy = b[1] - a[1];
-    const L2 = dx * dx + dy * dy || 1;
-    let t = ((px - a[0]) * dx + (py - a[1]) * dy) / L2;
-    t = Math.max(0, Math.min(1, t));
-    const cx = a[0] + t * dx, cy = a[1] + t * dy;
-    return Math.hypot(px - cx, py - cy);
-  }
-  function stampRoad(points, halfW, paved) {
-    for (let i = 0; i + 1 < points.length; i++) {
-      const a = points[i], b = points[i + 1];
-      const minX = Math.max(ix0, Math.floor(Math.min(a[0], b[0]) - halfW));
-      const maxX = Math.min(ix1, Math.ceil(Math.max(a[0], b[0]) + halfW));
-      const minY = Math.max(iy0, Math.floor(Math.min(a[1], b[1]) - halfW));
-      const maxY = Math.min(iy1, Math.ceil(Math.max(a[1], b[1]) + halfW));
-      for (let gx = minX; gx <= maxX; gx++) for (let gy = minY; gy <= maxY; gy++) {
-        if (distToSeg(gx + 0.5, gy + 0.5, a, b) <= halfW) {
-          const k = ci(gx, gy);
-          roadCount[k]++;
-          if (paved) roadPaved[k] = 1;
-        }
-      }
-    }
-  }
   function stampPoly(poly, type) {
     // 射线法填充格点
     const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]);
@@ -106,6 +80,13 @@
         cellType[ci(gx, gy)] = type;
   }
   // 直线带状填充（运河），直接写 type，不计入道路
+  function distToSeg(px, py, a, b) {
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const L2 = dx * dx + dy * dy || 1;
+    let t = ((px - a[0]) * dx + (py - a[1]) * dy) / L2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy));
+  }
   function stampBand(points, halfW, type) {
     for (let i = 0; i + 1 < points.length; i++) {
       const a = points[i], b = points[i + 1];
@@ -132,14 +113,50 @@
       }
     }
     if (TD.canal && TD.canal.length) stampBand(TD.canal, 1.8, 5);  // 运河=水面
-    // 道路
-    for (const r of TD.roads) stampRoad(r.gpts, r.w / 2, r.paved);
-    // 道路覆盖水/草，路口标记
-    for (let k = 0; k < cellType.length; k++) {
-      if (roadCount[k] >= 2) cellType[k] = 4;
-      else if (roadCount[k] === 1) cellType[k] = roadPaved[k] ? 3 : 2;
-    }
+    // 道路不再盖进格点：由 paintRoadLayer 矢量绘制（先水后路，与 buildPre/近景同一套）
   })();
+
+  // ---------- 矢量道路层：折线 round join/cap + dirt/pave CanvasPattern 纹理 ----------
+  // paved=w>=7 硬铺主路（浅灰缘石+路中线）；其余星露谷土路（双层半透明晕边羽化到草地）。
+  // 近景 drawGround 与低分辨率 groundPre 调用同一 paintRoadLayer，路网一致。
+  const roadPatterns = new WeakMap();
+  function roadPats(g) {
+    let p = roadPatterns.get(g);
+    if (!p) {
+      p = { dirt: g.createPattern(tileImg("dirt"), "repeat"),
+            pave: g.createPattern(tileImg("pave"), "repeat") };
+      roadPatterns.set(g, p);
+    }
+    return p;
+  }
+  function traceRoad(g, gpts) {
+    g.beginPath();
+    for (let i = 0; i < gpts.length; i++) {
+      const x = gpts[i][0] * TILE, y = gpts[i][1] * TILE;
+      if (i) g.lineTo(x, y); else g.moveTo(x, y);
+    }
+  }
+  function paintRoadLayer(g) {
+    const pats = roadPats(g);
+    g.lineJoin = "round"; g.lineCap = "round";
+    // 先画全部土路（同色叠底，丁字/十字/弯道由折线几何自然成型、路口融合）
+    for (const r of TD.roads) {
+      if (r.paved) continue;
+      const w = r.w * TILE;
+      traceRoad(g, r.gpts); g.strokeStyle = "rgba(146,116,72,0.20)"; g.lineWidth = w + 2.0 * TILE; g.stroke(); // 羽化外晕
+      traceRoad(g, r.gpts); g.strokeStyle = "rgba(162,130,82,0.32)"; g.lineWidth = w + 0.9 * TILE; g.stroke(); // 过渡带
+      traceRoad(g, r.gpts); g.strokeStyle = pats.dirt; g.lineWidth = w; g.stroke();               // 路面像素纹理
+    }
+    // 再画硬铺主路（缘石底垫 + pave 纹理 + 中央虚线）
+    for (const r of TD.roads) {
+      if (!r.paved) continue;
+      const w = r.w * TILE;
+      traceRoad(g, r.gpts); g.strokeStyle = "#b9b8ae"; g.lineWidth = w + 0.9 * TILE; g.stroke(); // 缘石
+      traceRoad(g, r.gpts); g.strokeStyle = pats.pave; g.lineWidth = w; g.stroke();            // 硬铺路面
+      traceRoad(g, r.gpts); g.strokeStyle = "rgba(255,255,255,0.45)"; g.lineWidth = Math.max(1, 0.26 * TILE);
+      g.setLineDash([1.3 * TILE, 1.7 * TILE]); g.stroke(); g.setLineDash([]);                  // 路中线
+    }
+  }
 
   // ---------- 低分辨率整体地面预渲染（缩放概览用） ----------
   const PRE = 0.15;
@@ -155,6 +172,10 @@
       g.drawImage(tileImg(TILE_ORDER[t]),
         (gx - GX0) * tw, (gy - GY0) * tw, tw + 1, tw + 1);
     }
+    // 矢量道路层：变换到世界坐标后与近景同一套 paintRoadLayer
+    g.setTransform(PRE, 0, 0, PRE, -GX0 * TILE * PRE, -GY0 * TILE * PRE);
+    paintRoadLayer(g);
+    g.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   // ---------- 资产加载（16 栋 sprite / C 批 tiles+decor / D 批角色帧） ----------
@@ -640,7 +661,7 @@
     const gx0 = w2sX(GX0 * TILE), gy0 = w2sY(GY0 * TILE);
     ctx.imageSmoothingEnabled = view.zoom < 0.5;
     ctx.drawImage(groundPre, gx0, gy0, gw, gh);
-    // 近景：叠清晰 tile
+    // 近景：叠清晰草地 tile + 同一套矢量道路层
     if (view.zoom >= 0.4) {
       const x0 = s2wX(0), y0 = s2wY(0), x1 = s2wX(window.innerWidth), y1 = s2wY(window.innerHeight);
       const g0x = Math.floor(x0 / TILE), g1x = Math.ceil(x1 / TILE);
@@ -652,6 +673,10 @@
         ctx.drawImage(tileImg(TILE_ORDER[t]),
           w2sX(gx * TILE), w2sY(gy * TILE), tw + 1, tw + 1);
       }
+      ctx.save();
+      ctx.setTransform(dpr * view.zoom, 0, 0, dpr * view.zoom, view.x * dpr, view.y * dpr);
+      paintRoadLayer(ctx);
+      ctx.restore();
     }
   }
   function drawPath() {
