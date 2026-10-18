@@ -1,0 +1,79 @@
+{
+  "batch": "D",
+  "batch_name": "星露谷 Q 版主角四方向走/跑/idle 帧",
+  "spec_ref": "docs/topdown-spec.md v1 (§2.4, §3, §6)",
+  "canvas": {
+    "width_px": 48,
+    "height_px": 64,
+    "grain": 4,
+    "art_width_px": 12,
+    "art_height_px": 16,
+    "mode": "RGBA transparent",
+    "outline_hex": "#2e2418",
+    "ground_shadow": "not baked — kernel drawPlayer() already draws elliptical shadow at feet (sx,sy); sprites contain no baked shadow"
+  },
+  "anchor": {
+    "description": "feet / bottom-center of canvas, zero drift across all 36 frames",
+    "x": 24,
+    "y": 64,
+    "draw_convention": "drawImage(img, -width/2, -height) with translate(feet_world_x, feet_world_y) — same as current kernel",
+    "measured_bbox": { "top": 4, "bottom": 63, "cx_center": "21.5–25.5 (within 2px, natural arm/leg sway)" }
+  },
+  "directions": ["down", "up", "left", "right"],
+  "sequences": {
+    "walk": {
+      "frames_per_dir": ["<dir>_walk_0.png", "<dir>_walk_1.png", "<dir>_walk_2.png", "<dir>_walk_3.png"],
+      "play_order": [0, 1, 2, 3, 0, 1, 2, 3],
+      "suggested_fps": 9,
+      "note": "down/up frames AI-painted; left = AI-painted side profile; right = exact horizontal mirror of left (symmetric by design)"
+    },
+    "run": {
+      "frames_per_dir": ["<dir>_run_0.png", "<dir>_run_1.png", "<dir>_run_2.png", "<dir>_run_3.png"],
+      "play_order": [0, 1, 2, 3, 0, 1, 2, 3],
+      "suggested_fps": 14.5,
+      "note": "forward-leaning, longer stride vs walk; right = mirror of left"
+    },
+    "idle": {
+      "frames_per_dir": ["<dir>_idle.png"],
+      "play_order": [0],
+      "suggested_fps": 0,
+      "note": "single standing frame; kernel idle bob handled in code (bob = -sin(idleT*1.8))"
+    }
+  },
+  "character": {
+    "identity": "chibi schoolgirl: short dark-brown bob hair with bangs, beige-khaki hoodie with hood on shoulders, light blue pleated mini skirt, white sneakers with dark-blue soles",
+    "proportion": "head ~1/3 of total height, tiny body, short limbs",
+    "palette": {
+      "outline": "#2e2418",
+      "hair_dark": "#4a3527",
+      "hair_mid": "#5d4433",
+      "hair_light": "#745742",
+      "skin": "#f2d3b3",
+      "skin_shade": "#d9ae8a",
+      "eye": "#332016",
+      "hoodie": "#c8a574",
+      "hoodie_shade": "#a38055",
+      "hoodie_light": "#ddbe8e",
+      "hood_lining": "#e9d284",
+      "skirt": "#7e90cf",
+      "skirt_shade": "#5f70ab",
+      "socks": "#e6e2da",
+      "shoes": "#f2f0ea",
+      "shoe_sole": "#3c4c6e"
+    }
+  },
+  "kernel_wiring_notes": {
+    "loader_path_change": "replace loadImg(\"img/player/player_<dir>_<f>.png\") with \"img/topdown/player/<dir>_walk_<f>.png\"",
+    "frame_constants": "FRAME_W = 48, FRAME_H = 64 (currently 56x70)",
+    "running_frames": "when player.running, select frames from <dir>_run_<f>.png instead of walk; frame index still floor(player.phase)%4",
+    "idle_frame": "when !player.moving, use <dir>_idle.png (frame index 0)",
+    "anchor": "unchanged — bottom-center feet anchor matches current drawImage(-fw/2, -fh)",
+    "dust": "keep existing procedural dust particles; no dust sprite asset needed",
+    "existing_kernel_bob_and_run_tilt": "keep — bob amp and rotate(±0.14)/scale(1.05,0.92) still apply on top of new frames"
+  },
+  "files": {
+    "dir": "03_地图预览器/img/topdown/player/",
+    "count": 36,
+    "list": "down|up|left|right x {walk_0..3, run_0..3, idle}"
+  }
+}
