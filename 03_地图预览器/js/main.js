@@ -52,7 +52,7 @@
   const BUILD_SCALE_ID = {
     "TEACH-1": 1.35, "TEACH-2": 1.50, "LIB": 1.32, "WENLI": 1.50,
     "LAB-TECH": 1.32, "ACT": 1.30, "CAN-YULAN": 1.50, "CAN-ZIZHU": 1.50,
-    "ENG-TRAIN": 1.35, "GYM": 1.30, "FIELD-W": 1.40, "FIELD-N": 1.40,
+    "ENG-TRAIN": 1.20, "GYM": 1.30, "FIELD-W": 1.40, "FIELD-N": 1.40,
     "GATE-S": 1.10, "GATE-E": 1.05, "GATE-W": 1.05, "MOUNT-YUPING": 1.15
   };
   // 无害调试钩子：URL ?scale=1 强制全局系数（用于放大前后对比截图，不影响默认）
