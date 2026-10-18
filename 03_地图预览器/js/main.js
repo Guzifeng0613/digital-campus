@@ -87,6 +87,7 @@
     navName: "",           // 目标名（提示用）
   };
   const keys = {};
+  const stick = { x: 0, y: 0 };  // 移动端虚拟摇杆方向（屏幕坐标，右 x+ / 下 y+）
   const PAD = 0.9;         // 角色碰撞半径（网格单位）
 
   function blocked(gx, gy) {
@@ -213,6 +214,7 @@
     if (keys["s"] || keys["arrowdown"]) dy += 1;
     if (keys["a"] || keys["arrowleft"]) dx -= 1;
     if (keys["d"] || keys["arrowright"]) dx += 1;
+    if (stick.x !== 0 || stick.y !== 0) { dx += stick.x; dy += stick.y; }
     const manual = (dx !== 0 || dy !== 0);
     if (manual && player.navPath) { player.navPath = null; player.navName = ""; navTipEl.classList.remove("show"); }
 
@@ -282,23 +284,102 @@
   });
   window.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
 
+  // 触摸设备标记（显示虚拟摇杆 / 移动提示）
+  const isTouch = (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) ||
+                  "ontouchstart" in window ||
+                  (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+  if (isTouch) document.body.classList.add("touch");
+
+  // ---------- 虚拟摇杆（移动端控制角色） ----------
+  const joyZone = document.getElementById("joyZone");
+  const joyBase = document.getElementById("joyBase");
+  const joyKnob = document.getElementById("joyKnob");
+  let joyId = null, joyCX = 0, joyCY = 0, joyR = 30;
+
+  function setJoy(e) {
+    let dx = e.clientX - joyCX, dy = e.clientY - joyCY;
+    const d = Math.hypot(dx, dy);
+    if (d > joyR) { dx = dx / d * joyR; dy = dy / d * joyR; }
+    joyKnob.style.transform = "translate(" + dx + "px," + dy + "px)";
+    if (d > 8) { stick.x = dx / joyR; stick.y = dy / joyR; }
+    else { stick.x = 0; stick.y = 0; }
+  }
+  function resetJoy() {
+    joyId = null; stick.x = 0; stick.y = 0;
+    joyKnob.style.transform = "translate(0px,0px)";
+  }
+  joyZone.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    joyZone.setPointerCapture(e.pointerId);
+    joyId = e.pointerId;
+    const r = joyBase.getBoundingClientRect();
+    joyCX = r.left + r.width / 2; joyCY = r.top + r.height / 2;
+    joyR = r.width / 2 - 24;
+    setJoy(e);
+  });
+  joyZone.addEventListener("pointermove", e => { if (e.pointerId === joyId) setJoy(e); });
+  joyZone.addEventListener("pointerup", resetJoy);
+  joyZone.addEventListener("pointercancel", resetJoy);
+
+  // 多指针：鼠标/单指拖拽与点击，双指捏合缩放 + 中点平移
+  const pointers = new Map();
   let dragging = false, moved = false, lastX = 0, lastY = 0;
+  let pinch = null;                                   // {dist, cx, cy}
+  let multiTouch = false;                             // 本次手势进入过双指，最终不触发点击
+  const ptDist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
   canvas.addEventListener("pointerdown", e => {
-    dragging = true; moved = false; lastX = e.clientX; lastY = e.clientY;
-    canvas.classList.add("dragging");
     canvas.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1) {
+      dragging = true; moved = false; multiTouch = false;
+      lastX = e.clientX; lastY = e.clientY;
+      canvas.classList.add("dragging");
+    } else if (pointers.size === 2) {
+      dragging = false; canvas.classList.remove("dragging");
+      const p = [...pointers.values()];
+      pinch = { dist: ptDist(p[0], p[1]), cx: (p[0].x + p[1].x) / 2, cy: (p[0].y + p[1].y) / 2 };
+      moved = true; multiTouch = true;               // 双指操作不当作点击
+    }
   });
+
   canvas.addEventListener("pointermove", e => {
-    if (!dragging) return;
-    const ddx = e.clientX - lastX, ddy = e.clientY - lastY;
-    if (Math.abs(ddx) + Math.abs(ddy) > 4) { moved = true; follow = false; updateFollowBtn(); }
-    view.x += ddx; view.y += ddy;
-    lastX = e.clientX; lastY = e.clientY;
+    if (!pointers.has(e.pointerId)) return;
+    const prev = pointers.get(e.pointerId);
+    const cur = { x: e.clientX, y: e.clientY };
+    pointers.set(e.pointerId, cur);
+
+    if (pointers.size === 2 && pinch) {
+      const p = [...pointers.values()];
+      const dist = ptDist(p[0], p[1]);
+      const cx = (p[0].x + p[1].x) / 2, cy = (p[0].y + p[1].y) / 2;
+      if (dist > 0 && pinch.dist > 0) zoomAt(cx, cy, dist / pinch.dist);
+      view.x += cx - pinch.cx; view.y += cy - pinch.cy;
+      pinch = { dist, cx, cy };
+      follow = false; updateFollowBtn();
+    } else if (dragging && pointers.size === 1) {
+      const ddx = cur.x - prev.x, ddy = cur.y - prev.y;
+      if (Math.abs(ddx) + Math.abs(ddy) > 4) { moved = true; follow = false; updateFollowBtn(); }
+      view.x += ddx; view.y += ddy;
+      lastX = cur.x; lastY = cur.y;
+    }
   });
-  canvas.addEventListener("pointerup", e => {
-    dragging = false; canvas.classList.remove("dragging");
-    if (!moved) handleClick(e.clientX, e.clientY);
-  });
+
+  function endPointer(e) {
+    pointers.delete(e.pointerId);
+    if (pointers.size === 0) {
+      const doClick = !moved && !multiTouch;
+      dragging = false; pinch = null; multiTouch = false;
+      canvas.classList.remove("dragging");
+      if (doClick) handleClick(e.clientX, e.clientY);
+    } else if (pointers.size === 1) {
+      // 双指抬起一指后切回单指：重置拖拽起点，且不触发点击
+      const p = [...pointers.values()][0];
+      pinch = null; dragging = true; moved = true; lastX = p.x; lastY = p.y;
+    }
+  }
+  canvas.addEventListener("pointerup", endPointer);
+  canvas.addEventListener("pointercancel", endPointer);
 
   canvas.addEventListener("wheel", e => {
     e.preventDefault();
@@ -331,7 +412,8 @@
     select: b => showInfo(b),
     gridToWorld, worldToGrid,
     gotoBuilding: id => { const b = D.buildings.find(x => x.id === id); if (b) navigateToBuilding(b); },
-    gotoPoint: (gx, gy) => navigateToPoint(gx, gy)
+    gotoPoint: (gx, gy) => navigateToPoint(gx, gy),
+    _pointerCount: () => pointers.size
   };
 
   // ---------- 信息卡 ----------
