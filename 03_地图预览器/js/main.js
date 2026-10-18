@@ -30,7 +30,8 @@
   const view = { x: 0, y: 0, zoom: 0.065 };
   let follow = false;
   function fitZoom() {
-    return Math.min(window.innerWidth * 0.96 / WORLD_W, window.innerHeight * 0.96 / WORLD_H);
+    // 建筑放大后向北(上)扩展，多留一点纵向留白避免边缘被裁
+    return Math.min(window.innerWidth * 0.92 / WORLD_W, window.innerHeight * 0.90 / WORLD_H);
   }
   function centerView() {
     view.zoom = fitZoom();
@@ -43,6 +44,37 @@
   const s2wY = sy => (sy - view.y) / view.zoom;
   const gridToWorld = (gx, gy) => ({ x: gx * TILE, y: gy * TILE });
   const worldToGrid = (wx, wy) => ({ gx: wx / TILE, gy: wy / TILE });
+
+  // ---------- 建筑整体缩放（星露谷式饱满紧凑） ----------
+  // 锚点 = footprint 南缘中点（fx+fw/2, fy+fh）固定；放大后向北(画面上)与两侧扩展，南缘不动。
+  // 全局默认 1.5；按 id 覆盖（由 overlap/road 校验脚本迭代得出，见 docs）。
+  const BUILD_SCALE = 1.5;
+  const BUILD_SCALE_ID = {
+    "TEACH-1": 1.15, "TEACH-2": 1.50, "LIB": 1.15, "WENLI": 1.50,
+    "LAB-TECH": 1.15, "ACT": 1.30, "CAN-YULAN": 1.50, "CAN-ZIZHU": 1.50,
+    "ENG-TRAIN": 1.35, "GYM": 1.30, "FIELD-W": 1.40, "FIELD-N": 1.40,
+    "GATE-S": 1.10, "GATE-E": 1.05, "GATE-W": 1.05, "MOUNT-YUPING": 1.15
+  };
+  function buildingScale(b) { return BUILD_SCALE_ID[b.id] != null ? BUILD_SCALE_ID[b.id] : BUILD_SCALE; }
+  // 放大后视觉 footprint（网格单位）：中心 x=fx+fw/2 不变，南缘 y=fy+fh 不变，宽 fw*s、高 fh*s（向北扩展）
+  function visRect(b) {
+    const s = buildingScale(b);
+    const [fx, fy, fw, fh] = b.grid;
+    const nfw = fw * s, nfh = fh * s;
+    const cx = fx + fw / 2;
+    return { x: cx - nfw / 2, y: (fy + fh) - nfh, w: nfw, h: nfh, s };
+  }
+  // 点击命中盒：用放大后的整张 sprite 画布矩形（含屋顶悬挑），底边中点锚定
+  function clickRect(b) {
+    const s = buildingScale(b);
+    const anX = b.grid[0] + b.grid[2] / 2, anY = b.grid[1] + b.grid[3]; // 网格单位
+    const real = spriteImgs[b.id];
+    if (real) {
+      const gw = real.width * s / TILE, gh = real.height * s / TILE;
+      return { x: anX - gw / 2, y: anY - gh, w: gw, h: gh };
+    }
+    return visRect(b);
+  }
 
   // ---------- 地面 tile（C 批次美术 tile，48×48 无缝 PNG，BOOT 时加载） ----------
   // 0 grass_a, 1 grass_b, 2 dirt, 3 pave, 4 jct, 5 water
@@ -259,14 +291,15 @@
   ];
   const fences = FIELDS.map(cfg => {
     const b = D.buildings.find(x => x.id === cfg.id);
-    const [fx, fy, fw, fh] = b.grid;
+    const r = visRect(b);            // 围栏随放大后场地
+    const fx = r.x, fy = r.y, fw = r.w, fh = r.h;
     let cx, cy;
     if (cfg.gateSide === "gxmin" || cfg.gateSide === "gxmax") {
       cx = cfg.gateSide === "gxmin" ? fx : fx + fw; cy = fy + fh * cfg.gateT;
     } else {
       cx = fx + fw * cfg.gateT; cy = cfg.gateSide === "gymin" ? fy : fy + fh;
     }
-    return { id: cfg.id, b, rect: b.grid, zone: cfg.zone, g: { side: cfg.gateSide, cx, cy }, open: 0, inside: false };
+    return { id: cfg.id, b, rect: [fx, fy, fw, fh], zone: cfg.zone, g: { side: cfg.gateSide, cx, cy }, open: 0, inside: false };
   });
   function inGap(cx, cy, g) {
     if (g.side === "gxmin" || g.side === "gxmax")
@@ -291,22 +324,23 @@
   // ---------- 东西校门伸缩门（闭合阻挡 / 接近收拢放行） ----------
   const campusGates = ["GATE-E", "GATE-W"].map(id => {
     const b = D.buildings.find(x => x.id === id);
-    return { id, b, open: 0, cx: b.grid[0] + b.grid[2] / 2, cy: b.grid[1] + b.grid[3] / 2 };
+    const r = visRect(b);
+    return { id, b, open: 0, cx: r.x + r.w / 2, cy: r.y + r.h / 2 };
   });
   function blockedAt(gx, gy, pad) {
     if (gx < GX0 || gx > GX1 || gy < GY0 || gy > GY1) return true;
     for (const b of D.buildings) {
       if (b.walkable) continue;
       if (b.id === "GATE-E" || b.id === "GATE-W") continue;   // 校门由伸缩门逻辑控制
-      const [x, y, w, h] = b.collider;
-      if (gx > x - pad && gx < x + w + pad && gy > y - pad && gy < y + h + pad) return true;
+      const r = visRect(b);
+      if (gx > r.x - pad && gx < r.x + r.w + pad && gy > r.y - pad && gy < r.y + r.h + pad) return true;
     }
     for (const F of fences) if (fenceBlocked(gx, gy, F)) return true;
     for (const g of campusGates) {
-      // 校门闭合时阻挡 collider；收拢 open 后放行
+      // 校门闭合时阻挡放大后视觉 footprint；收拢 open 后放行
       if (g.open > 0.5) continue;
-      const [x, y, w, h] = g.b.collider;
-      if (gx > x - pad && gx < x + w + pad && gy > y - pad && gy < y + h + pad) return true;
+      const r = visRect(g.b);
+      if (gx > r.x - pad && gx < r.x + r.w + pad && gy > r.y - pad && gy < r.y + r.h + pad) return true;
     }
     return false;
   }
@@ -358,7 +392,8 @@
     return null;
   }
   function openSpotsAround(b) {
-    const [gx, gy, gw, gh] = b.grid;
+    const r = visRect(b);
+    const gx = r.x, gy = r.y, gw = r.w, gh = r.h;
     const m = 2.4, step = 2, pts = [];
     for (let x = gx - m; x <= gx + gw + m; x += step) {
       pts.push({ gx: x, gy: gy - m }); pts.push({ gx: x, gy: gy + gh + m });
@@ -603,10 +638,15 @@
   }
   function handleClick(cx, cy) {
     const g = worldToGrid(s2wX(cx), s2wY(cy));
+    let hit = null, hitSouth = -Infinity;
     for (const b of D.buildings) {
-      const [gx, gy, gw, gh] = b.grid;
-      if (g.gx >= gx && g.gx <= gx + gw && g.gy >= gy && g.gy <= gy + gh) { showInfo(b); return; }
+      const r = clickRect(b);
+      if (g.gx >= r.x && g.gx <= r.x + r.w && g.gy >= r.y && g.gy <= r.y + r.h) {
+        const south = r.y + r.h;   // 前后遮挡：南边(靠屏幕下方)的最上层优先
+        if (south > hitSouth) { hitSouth = south; hit = b; }
+      }
     }
+    if (hit) { showInfo(hit); return; }
     navigateToPoint(g.gx, g.gy);
   }
 
@@ -651,7 +691,7 @@
     select: b => showInfo(b),
     gotoBuilding: id => { const b = D.buildings.find(x => x.id === id); if (b) navigateToBuilding(b); },
     gotoPoint: (gx, gy) => navigateToPoint(gx, gy),
-    dbg: { blockedAt, bfs, nearestOpen, openSpotsAround, fences }
+    dbg: { blockedAt, bfs, nearestOpen, openSpotsAround, fences, buildingScale, visRect, clickRect }
   };
 
   // ---------- 绘制：地面 ----------
@@ -720,28 +760,30 @@
   }
   function drawBuilding(b) {
     const z = view.zoom;
+    const s = buildingScale(b);
     const [fx, fy, fw, fh] = b.grid;
     const meta = TD.sprites && TD.sprites[b.id];
     const an = { x: (fx + fw / 2) * TILE, y: (fy + fh) * TILE + (meta ? meta.dy : 0) };
     const real = spriteImgs[b.id];
     if (real) {
       const gate = campusGates.find(g => g.id === b.id);
-      let w = real.width * z, h = real.height * z;
+      let w = real.width * z * s, h = real.height * z * s;
       let dx = an.x * z + view.x - w / 2;
       if (gate) {
         // 伸缩门：open 增大时横向向一侧门柱收拢（accordion）
         const sc = 1 - gate.open * 0.62;
-        w = real.width * z * sc;
+        w = real.width * z * s * sc;
         dx = an.x * z + view.x - w;   // 右缘对齐锚点（右侧门柱固定）
       }
-      ctx.imageSmoothingEnabled = z < 0.85;
+      ctx.imageSmoothingEnabled = false;   // NEAREST 硬像素，缩放不糊
       ctx.drawImage(real, dx, an.y * z + view.y - h, w, h);
       ctx.imageSmoothingEnabled = true;
       return;
     }
-    // 占位方块：footprint + 南立面
-    const x0 = w2sX(fx * TILE), y0 = w2sY(fy * TILE);
-    const wpx = fw * TILE * z, hpx = fh * TILE * z;
+    // 占位方块：放大后视觉 footprint + 南立面
+    const r = visRect(b);
+    const x0 = w2sX(r.x * TILE), y0 = w2sY(r.y * TILE);
+    const wpx = r.w * TILE * z, hpx = r.h * TILE * z;
     const rise = (RISE[b.cat] || 120) * z;
     const col = b.walkable ? "#5f9e4a" : (GROUP_COLOR[b.group] || "#9fb4d8");
     ctx.fillStyle = col;
@@ -905,8 +947,11 @@
     const h = fs + 9, padX = 8;
     for (const b of D.buildings) {
       const meta = TD.sprites && TD.sprites[b.id];
+      const s = buildingScale(b);
       const an = { x: (b.grid[0] + b.grid[2] / 2) * TILE, y: (b.grid[1] + b.grid[3]) * TILE + (meta ? meta.dy : 0) };
-      const lx = w2sX(an.x), ly = w2sY(an.y) - (RISE[b.cat] || 120) * z - 8;
+      const real = spriteImgs[b.id];
+      const topY = real ? (an.y - real.height * s) : b.grid[1] * TILE;  // 标签贴放大后 sprite 顶部
+      const lx = w2sX(an.x), ly = w2sY(topY) - 8;
       if (lx < -80 || lx > window.innerWidth + 80 || ly < -30 || ly > window.innerHeight + 30) continue;
       const tw = ctx.measureText(b.name).width;
       ctx.fillStyle = "rgba(15,22,34,.72)";
@@ -940,9 +985,10 @@
       mmCtx.stroke();
     }
     for (const b of D.buildings) {
-      const m = w2m(anchorOf(b).x, anchorOf(b).y);
+      const r = visRect(b);
       mmCtx.fillStyle = GROUP_COLOR[b.group] || "#9fb4d8";
-      mmCtx.fillRect(m.x - 1.6, m.y - 1.6, 3.2, 3.2);
+      const p0 = w2m(r.x * TILE, r.y * TILE), p1 = w2m((r.x + r.w) * TILE, (r.y + r.h) * TILE);
+      mmCtx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
     }
     const c0 = w2m(s2wX(0), s2wY(0)), c1 = w2m(s2wX(window.innerWidth), s2wY(window.innerHeight));
     mmCtx.fillStyle = "rgba(255,255,255,.07)";
