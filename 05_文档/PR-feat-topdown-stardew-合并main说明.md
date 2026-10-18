@@ -36,6 +36,12 @@
 | TEACH-2/CAN-*/WENLI | 1.50 | GATE-S/E/W | 1.10/1.05/1.05 |
 | ACT | 1.30 | MOUNT-YUPING | 1.15 |
 
+## 三轮迭代（轮廓按官方图重画 10 栋）
+- **重画清单**：TEACH-1 弯月马蹄+南门廊、TEACH-2 非对称块、ACT 横展扇形、CAN-YULAN [形、WENLI 近方矩形、GYM 斜椭圆、CAN-ZIZHU 竖块凹口、LAB-TECH 双 U 合院拉宽、ENG-TRAIN 竖长凸块、MOUNT-YUPING 双峰高览亭；经独立双遍质检 10/10 PASS。
+- **集成校正**：新 PNG 画布内底边透明留白使内容相对 footprint 北漂，按 margin×scale 在 topdown_data.js 补 dy（LAB-TECH 391、TEACH-2 228、ACT 203、CAN-YULAN 132、ENG-TRAIN 48 等），南缘回贴道路。
+- **回归**：16 栋 BFS 全可达、两操场唯一门横幅、东西伸缩门开闸、信息卡/小地图/移动端均通过；console 无 JS 错误。
+- 对比截图 `screenshots_td/shape_official_vs_scene/`（10 栋官方图↔实景）、`screenshots_td/final3_*.png`（16 张最终实景）。
+
 ## 如何预览
 
 ```bash

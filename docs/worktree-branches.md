@@ -5,13 +5,15 @@
 | 路径 | 分支 | HEAD | 角色 |
 |---|---|---|---|
 | `digital-campus/`（主工作区，只读参考） | `main` | 98b1145 | 等距菱形 iso 线上版 |
-| `worktrees/core/` | `feat/topdown-stardew` | acb1b1f | **本任务主干**：TD-0 内核 + 4 批次 + TD-5 集成 + 二轮路网/尺度 + 集成方微调 |
+| `worktrees/core/` | `feat/topdown-stardew` | e645bcd | **本任务主干**：TD-0 内核 + 4 批次 + TD-5 + 路网/尺度 + 三轮轮廓重画集成 |
 | `worktrees/a/` | `feat/td/assets-a` | 739e1b3 | 批次 A：教学/生活 6 栋 sprite |
 | `worktrees/b/` | `feat/td/assets-b` | a31378e | 批次 B：体育/山体/实验 5 栋 |
 | `worktrees/c/` | `feat/td/assets-c` | e7d654f | 批次 C：3 校门 + 10 地面 tile + decor |
 | `worktrees/d/` | `feat/td/assets-d` | a4f202d | 批次 D：主角 36 帧 |
 | `worktrees/roads/` | `feat/td/roads` | 9491162 | 二轮：路网按官方图校正（8→11 条）+ 矢量折线渲染 |
 | `worktrees/scale/` | `feat/td/scale` | 6584afa | 二轮：建筑全局放大 1.15–1.5 + 全链路碰撞/交互校准 |
+| `worktrees/shapes-south/` | `feat/td/shapes-south` | 740a6de | 三轮：南/山体 5 栋轮廓按官方图重画（双遍质检） |
+| `worktrees/shapes-central/` | `feat/td/shapes-central` | c57c7a1 | 三轮：中央群 5 栋轮廓按官方图重画（双遍质检） |
 
 ## 合并状态（core 分支内，未 push、未合 main）
 
@@ -22,6 +24,8 @@
 c54056a  merge(td): 合入资产批次 d
 b334081  merge(td): 合入道路精修（feat/td/roads）
 14d57fe  merge(td): 合入建筑放大（feat/td/scale）
+a59b7d5  merge(td): 合入轮廓重画-南/山体（feat/td/shapes-south）
+ba3c55f  merge(td): 合入轮廓重画-中央群（feat/td/shapes-central）
 ```
 
 ## 关键提交（main..HEAD）
@@ -38,6 +42,8 @@ b334081  merge(td): 合入道路精修（feat/td/roads）
 - `b334081/14d57fe` 二轮合入路网精修 + 建筑放大
 - `b012eab` 中央楼群尺度再提升（TEACH-1 1.35 / LIB·LAB-TECH 1.32）+ check_scale.py
 - `acb1b1f` ENG-TRAIN 降到 1.2 让出 FIELD-N 门通道 + final2/scale 对比截图
+- `a59b7d5/ba3c55f` 三轮合入轮廓重画 10 栋（双遍质检）
+- `e645bcd` 轮廓重画后 sprite 画布内偏移 dy 校正 + shape 对比 10 组 + final3 16 张
 
 ## 红线执行情况
 

@@ -2,6 +2,15 @@
 
 本项目版本号遵循语义化版本（SemVer）。
 
+## [2.2.0-topdown] - 2026-10-18
+
+三轮：10 栋建筑轮廓按官方平面图重画（双遍质检 10/10 PASS）。
+
+### 改动
+- **轮廓重画**：TEACH-1 弯月马蹄、TEACH-2 非对称块、ACT 横展扇形、CAN-YULAN [形、WENLI 近方矩形、GYM 斜椭圆、CAN-ZIZHU 竖块凹口、LAB-TECH 双 U 合院拉宽、ENG-TRAIN 竖长凸块、MOUNT-YUPING 双峰高览亭。
+- **锚点校正**：新 PNG 画布内底边透明留白导致内容北漂，按 margin×scale 补 dy（LAB-TECH 391 / TEACH-2 228 / ACT 203 等），建筑南缘回贴 footprint 南缘。
+- 16 栋 BFS 可达、两操场门横幅、东西门开闸回归通过；shape 官方对比 10 组 + final3 16 张。
+
 ## [2.1.0-topdown] - 2026-10-18
 
 二轮：路网精修 + 建筑尺度饱满化。
