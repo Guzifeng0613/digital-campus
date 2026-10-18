@@ -5,21 +5,23 @@
 | 路径 | 分支 | HEAD | 角色 |
 |---|---|---|---|
 | `digital-campus/`（主工作区，只读参考） | `main` | 98b1145 | 等距菱形 iso 线上版 |
-| `worktrees/core/` | `feat/topdown-stardew` | f6907a3 | **本任务主干**：TD-0 内核 + 4 批次合入 + TD-5 集成 + 文档/打包 |
-| `worktrees/a/` | `feat/td/assets-a` | 739e1b3 | 批次 A：教学/生活 6 栋 sprite（TEACH-2/LIB/WENLI/ACT/CAN-YULAN/CAN-ZIZHU；TEACH-1 为 TD-0 样板未动） |
-| `worktrees/b/` | `feat/td/assets-b` | a31378e | 批次 B：体育/山体/实验 5 栋（FIELD-W/GYM/MOUNT-YUPING/LAB-TECH/ENG-TRAIN；FIELD-N 为 TD-0 样板） |
-| `worktrees/c/` | `feat/td/assets-c` | e7d654f | 批次 C：3 校门（GATE-S/E/W）+ 10 地面 tile + 13 新增 decor（decor 目录共 17 件含 TD-0 样板） |
-| `worktrees/d/` | `feat/td/assets-d` | a4f202d | 批次 D：主角 36 帧（48×64 走/跑/idle） |
+| `worktrees/core/` | `feat/topdown-stardew` | acb1b1f | **本任务主干**：TD-0 内核 + 4 批次 + TD-5 集成 + 二轮路网/尺度 + 集成方微调 |
+| `worktrees/a/` | `feat/td/assets-a` | 739e1b3 | 批次 A：教学/生活 6 栋 sprite |
+| `worktrees/b/` | `feat/td/assets-b` | a31378e | 批次 B：体育/山体/实验 5 栋 |
+| `worktrees/c/` | `feat/td/assets-c` | e7d654f | 批次 C：3 校门 + 10 地面 tile + decor |
+| `worktrees/d/` | `feat/td/assets-d` | a4f202d | 批次 D：主角 36 帧 |
+| `worktrees/roads/` | `feat/td/roads` | 9491162 | 二轮：路网按官方图校正（8→11 条）+ 矢量折线渲染 |
+| `worktrees/scale/` | `feat/td/scale` | 6584afa | 二轮：建筑全局放大 1.15–1.5 + 全链路碰撞/交互校准 |
 
 ## 合并状态（core 分支内，未 push、未合 main）
-
-`feat/topdown-stardew` 已依次 merge 四个资产分支：
 
 ```
 9c0d391  merge(td): 合入资产批次 a
 85215a7  merge(td): 合入资产批次 b
 96f88bc  merge(td): 合入资产批次 c
 c54056a  merge(td): 合入资产批次 d
+b334081  merge(td): 合入道路精修（feat/td/roads）
+14d57fe  merge(td): 合入建筑放大（feat/td/scale）
 ```
 
 ## 关键提交（main..HEAD）
@@ -33,6 +35,9 @@ c54056a  merge(td): 合入资产批次 d
 - `aaba2e2` TD-5：接入 A/B/C/D 全部资产（16 栋 sprite/美术 tile/装饰/场地逻辑/D 批角色帧）
 - `d26db1a` 分支拓扑 + PR 说明 + CHANGELOG + 开箱 zip 打包
 - `f6907a3` TD-5 浏览器回归实测 final 截图（12 张，无 JS 错误）
+- `b334081/14d57fe` 二轮合入路网精修 + 建筑放大
+- `b012eab` 中央楼群尺度再提升（TEACH-1 1.35 / LIB·LAB-TECH 1.32）+ check_scale.py
+- `acb1b1f` ENG-TRAIN 降到 1.2 让出 FIELD-N 门通道 + final2/scale 对比截图
 
 ## 红线执行情况
 

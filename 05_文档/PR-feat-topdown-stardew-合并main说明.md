@@ -22,6 +22,20 @@
 - `docs/topdown-spec.md`：并行批次契约（投影/锚点/深度/调色板/命名/prompt 模板/批次白名单）；
 - `02_地图工程/build/gen_topdown_data.py`：从 map_data.json + data.js 导出 js/topdown_data.js（道路/运河/自然地块 + 每栋 sprite 元数据）。
 
+## 二轮迭代（路网 + 尺度）
+- **路网精修**：按官方图校正为 11 条道路（新增南门轴路/西门支路/风雨操场支路，修正北侧路/樱花道），三门两操场全连通；道路改矢量折线渲染（round join/cap、土路晕边+dirt 纹理、w≥7 硬铺缘石+白虚线）。对比截图 `screenshots_td/roads_beforeafter/`。
+- **建筑尺度**：全局 1.5、按 id 覆盖；集成方再把中央楼群 TEACH-1 提至 1.35、LIB/LAB-TECH 提至 1.32（几何 visRect 残留 2–5.5 格重叠在 sprite 透明余量内，目视无立面裁切）；ENG-TRAIN 让至 1.2 以让出 FIELD-N 门通道。对比截图 `screenshots_td/scale_beforeafter/`。
+- 最终系数表见下「附：缩放系数表」。
+
+### 附：最终缩放系数表
+| 栋 | 系数 | 栋 | 系数 |
+|---|---|---|---|
+| TEACH-1 | 1.35 | GYM | 1.30 |
+| LIB | 1.32 | ENG-TRAIN | 1.20 |
+| LAB-TECH | 1.32 | FIELD-N/W | 1.40 |
+| TEACH-2/CAN-*/WENLI | 1.50 | GATE-S/E/W | 1.10/1.05/1.05 |
+| ACT | 1.30 | MOUNT-YUPING | 1.15 |
+
 ## 如何预览
 
 ```bash
