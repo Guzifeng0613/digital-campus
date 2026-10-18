@@ -923,13 +923,15 @@
       drawList.push({ kind: "b", depth: an.y / TILE * 1000 + an.x / TILE, b });
     }
     for (const F of fences) drawList.push({ kind: "f", depth: F.g.cy * 1000 + F.g.cx, F });
-    for (const d of DECOR) drawList.push({ kind: "d", depth: d.gy * 1000 + d.gx });
+    // 装饰树按最深一棵树的位置参与排序（静态装饰，整体作为一层）
+    drawList.push({ kind: "d", depth: Math.max(...DECOR.map(d => d.gy)) * 1000 });
     const pg = worldToGrid(player.wx, player.wy);
     drawList.push({ kind: "p", depth: pg.gy * 1000 + pg.gx });
     drawList.sort((a, b) => a.depth - b.depth);
     for (const it of drawList) {
       if (it.kind === "b") drawBuilding(it.b);
       else if (it.kind === "f") drawFences(it.F);
+      else if (it.kind === "d") drawDecor();
       else if (it.kind === "p") drawPlayer();
     }
     drawLabels();
