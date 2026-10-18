@@ -61,34 +61,148 @@
     })));
   }
 
-  // ---------- chibi 像素角色帧（4方向×4帧） ----------
-  const playerFrames = {};
-  function loadPlayerFrames() {
-    const dirs = ["down", "up", "left", "right"];
-    return Promise.all(dirs.map(dir => Promise.all([0, 1, 2, 3].map(f => new Promise(res => {
+  // ---------- chibi 像素角色帧（4方向×4帧，走路 / 跑步各一套） ----------
+  // 走路帧为现有 player_<dir>_<f>.png；跑步帧为可选的 player_run_<dir>_<f>.png，
+  // 若缺失则在渲染时用走路帧 + 前倾 / 急促起伏 / 扬尘程序化表现跑步。
+  const FRAME_W = 88, FRAME_H = 110;   // 角色帧绘制尺寸（原 64×80，整体放大约 1.37 倍）
+  const walkFrames = {};
+  const runFrames = {};
+  function loadFrameSet(dir, f, prefix) {
+    return new Promise(res => {
       const img = new Image();
       img.onload = () => res(img);
       img.onerror = () => res(null);
-      img.src = "img/player/player_" + dir + "_" + f + ".png";
-    }))).then(arr => { playerFrames[dir] = arr; })));
+      img.src = "img/player/" + prefix + dir + "_" + f + ".png";
+    });
+  }
+  function loadPlayerFrames() {
+    const dirs = ["down", "up", "left", "right"];
+    return Promise.all(dirs.map(dir =>
+      Promise.all([0, 1, 2, 3].map(f => loadFrameSet(dir, f, "player_")))
+        .then(arr => { walkFrames[dir] = arr; })
+        .then(() => Promise.all([0, 1, 2, 3].map(f => loadFrameSet(dir, f, "player_run_"))))
+        .then(arr => { runFrames[dir] = arr; })
+    ));
   }
 
   // ---------- 角色 ----------
   const GATE_S = D.buildings.find(b => b.id === "GATE-S");
   // 起点：南门内侧
   const start = gridToWorld(GATE_S.grid[0] + 6, GATE_S.grid[1] - 6);
+  const WALK_SPEED = 300;      // 走路速度（世界像素/秒）
+  const JOG_SPEED = 460;       // 自动寻路默认慢跑速度
+  const RUN_SPEED = 540;       // 跑步速度
   const player = {
     wx: start.x, wy: start.y,
-    speed: 300,            // 世界像素/秒
-    phase: 0,              // 走路相位
+    phase: 0,              // 步态相位（连续累加，驱动帧索引与起伏）
+    idleT: 0,              // 站立呼吸计时
     moving: false,
+    running: false,        // 当前是否为跑步姿态（前倾/快步/扬尘）
+    runLock: false,        // 跑步开关（按钮 / Shift 切换）
     facing: "down",        // up/down/left/right
+    dustT: 0,              // 扬尘粒子生成计时
     navPath: null,         // 自动寻路：世界坐标点数组（含当前点）
     navName: "",           // 目标名（提示用）
   };
+  // 扬尘粒子（跑步时脚后扬起的小土点，世界坐标）
+  const dust = [];
+  function spawnDust(backUx, backUy) {
+    dust.push({
+      x: player.wx + backUx * 14 + (Math.random() - 0.5) * 8,
+      y: player.wy + backUy * 14 + (Math.random() - 0.5) * 6,
+      vx: backUx * 26 + (Math.random() - 0.5) * 18,
+      vy: backUy * 26 + (Math.random() - 0.5) * 18 - 6,
+      life: 0.55, max: 0.55, s: 2.2 + Math.random() * 2.2
+    });
+  }
+  function updateDust(dt) {
+    for (let i = dust.length - 1; i >= 0; i--) {
+      const p = dust[i];
+      p.life -= dt;
+      if (p.life <= 0) { dust.splice(i, 1); continue; }
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.vx *= 0.9; p.vy *= 0.9;
+    }
+  }
   const keys = {};
-  const stick = { x: 0, y: 0 };  // 移动端虚拟摇杆方向（屏幕坐标，右 x+ / 下 y+）
-  const PAD = 0.9;         // 角色碰撞半径（网格单位）
+  const stick = { x: 0, y: 0, mag: 0 };  // 移动端虚拟摇杆方向（屏幕坐标，右 x+ / 下 y+）+ 力度
+  const PAD = 1.0;         // 角色碰撞半径（网格单位）
+
+  // ---------- 场地围栏 + 唯一入口（只能从门进） ----------
+  // 操场 walkable，但用一圈围栏围住，仅在靠道路一侧留一个门缺口；
+  // 场内可自由行走，场外无法穿过围栏，寻路会自动绕到门。
+  const FENCE_WALL = 1.0;    // 围栏碰撞厚度（网格）
+  const GATE_HALF = 3.3;     // 门缺口半宽（网格）
+  const FIELDS = [
+    { id: "FIELD-N", gateSide: "gymax", gateT: 0.52, zone: "北操场（东田径场）" },
+    { id: "FIELD-W", gateSide: "gxmax", gateT: 0.5,  zone: "风雨操场（西田径场）" }
+  ];
+  const fences = FIELDS.map(cfg => {
+    const b = D.buildings.find(x => x.id === cfg.id);
+    const [fx, fy, fw, fh] = b.grid;
+    const g = { side: cfg.gateSide };
+    if (cfg.gateSide === "gxmin" || cfg.gateSide === "gxmax") {
+      g.cx = cfg.gateSide === "gxmin" ? fx : fx + fw;
+      g.cy = fy + fh * cfg.gateT;
+    } else {
+      g.cx = fx + fw * cfg.gateT;
+      g.cy = cfg.gateSide === "gymin" ? fy : fy + fh;
+    }
+    const w = gridToWorld(g.cx, g.cy);
+    if (cfg.gateSide === "gxmin" || cfg.gateSide === "gxmax") {
+      g.along = { gx: 0, gy: 1 };
+      g.out = { gx: cfg.gateSide === "gxmax" ? 1 : -1, gy: 0 };
+    } else {
+      g.along = { gx: 1, gy: 0 };
+      g.out = { gx: 0, gy: cfg.gateSide === "gymax" ? 1 : -1 };
+    }
+    g.wx = w.x; g.wy = w.y;
+    return { id: cfg.id, b, rect: b.grid, zone: cfg.zone, g, open: 0, inside: false };
+  });
+
+  // 校门（校园边缘的门，只做开合动画 + 欢迎语，不真正走出校园）
+  const CAMPUS_GATES = [
+    { id: "GATE-S", side: "gymin", t: 0.5, label: "南门（主校门）" },
+    { id: "GATE-E", side: "gxmin", t: 0.5, label: "东门（车行出入口）" },
+    { id: "GATE-W", side: "gxmax", t: 0.5, label: "西门" }
+  ].map(cfg => {
+    const b = D.buildings.find(x => x.id === cfg.id);
+    const [fx, fy, fw, fh] = b.grid;
+    let cx, cy, along, out;
+    if (cfg.side === "gxmin" || cfg.side === "gxmax") {
+      cx = cfg.side === "gxmin" ? fx : fx + fw; cy = fy + fh * cfg.t;
+      along = { gx: 0, gy: 1 }; out = { gx: cfg.side === "gxmax" ? 1 : -1, gy: 0 };
+    } else {
+      cx = fx + fw * cfg.t; cy = cfg.side === "gymin" ? fy : fy + fh;
+      along = { gx: 1, gy: 0 }; out = { gx: 0, gy: cfg.side === "gymax" ? 1 : -1 };
+    }
+    const w = gridToWorld(cx, cy);
+    return { id: cfg.id, b, label: cfg.label, cx, cy, along, out, wx: w.x, wy: w.y, open: 0, greeted: false };
+  });
+
+  function inGap(cx, cy, g) {
+    if (g.side === "gxmin" || g.side === "gxmax") {
+      return Math.abs(cx - g.cx) < FENCE_WALL + 0.5 && cy > g.cy - GATE_HALF && cy < g.cy + GATE_HALF;
+    }
+    return Math.abs(cy - g.cy) < FENCE_WALL + 0.5 && cx > g.cx - GATE_HALF && cx < g.cx + GATE_HALF;
+  }
+  function fenceBlocked(gx, gy, F) {
+    const [fx, fy, fw, fh] = F.rect;
+    const w = FENCE_WALL;
+    if (gx < fx - w || gx > fx + fw + w || gy < fy - w || gy > fy + fh + w) return false;
+    if (gx > fx + w && gx < fx + fw - w && gy > fy + w && gy < fy + fh - w) return false;
+    let on = false;
+    if (Math.abs(gx - fx) < w && gy > fy && gy < fy + fh) on = true;
+    if (Math.abs(gx - (fx + fw)) < w && gy > fy && gy < fy + fh) on = true;
+    if (Math.abs(gy - fy) < w && gx > fx && gx < fx + fw) on = true;
+    if (Math.abs(gy - (fy + fh)) < w && gx > fx && gx < fx + fw) on = true;
+    if (!on) return false;
+    return !inGap(gx, gy, F.g);
+  }
+  function insideField(gx, gy, F) {
+    const [fx, fy, fw, fh] = F.rect;
+    return gx > fx && gx < fx + fw && gy > fy && gy < fy + fh;
+  }
 
   function blocked(gx, gy) {
     if (gx < GX0 || gx > GX1 || gy < GY0 || gy > GY1) return true;
@@ -97,6 +211,7 @@
       const [x, y, w, h] = b.collider;
       if (gx > x - PAD && gx < x + w + PAD && gy > y - PAD && gy < y + h + PAD) return true;
     }
+    for (const F of fences) if (fenceBlocked(gx, gy, F)) return true;
     return false;
   }
 
@@ -115,6 +230,7 @@
       const [x, y, w, h] = b.collider;
       if (gx > x - NAV_PAD && gx < x + w + NAV_PAD && gy > y - NAV_PAD && gy < y + h + NAV_PAD) return true;
     }
+    for (const F of fences) if (fenceBlocked(gx, gy, F)) return true;
     return false;
   }
   const uvBlocked = (u, v) => navBlocked((u + v) / 2, (u - v) / 2);
@@ -208,6 +324,31 @@
     startNav(best, b.name);
   }
 
+  // 轴分离移动（碰撞检测），返回实际是否发生位移
+  function moveBy(ux, uy, v) {
+    const ox = player.wx, oy = player.wy;
+    const nx = player.wx + ux * v, ny = player.wy + uy * v;
+    const gAll = worldToGrid(nx, ny);
+    if (!blocked(gAll.gx, gAll.gy)) { player.wx = nx; player.wy = ny; }
+    else {
+      const gx = worldToGrid(nx, player.wy);
+      if (!blocked(gx.gx, gx.gy)) player.wx = nx;
+      const gy = worldToGrid(player.wx, ny);
+      if (!blocked(gy.gx, gy.gy)) player.wy = ny;
+    }
+    return Math.hypot(player.wx - ox, player.wy - oy);
+  }
+  // 跑步时脚后扬尘
+  function emitDust(dt, fast) {
+    player.dustT += dt;
+    const interval = fast ? 0.1 : 0.2;
+    if (player.dustT >= interval) {
+      player.dustT = 0;
+      spawnDust(-player.mvx, -player.mvy);
+      if (fast) spawnDust(-player.mvx, -player.mvy);
+    }
+  }
+
   function updatePlayer(dt) {
     let dx = 0, dy = 0;
     if (keys["w"] || keys["arrowup"]) dy -= 1;
@@ -218,61 +359,96 @@
     const manual = (dx !== 0 || dy !== 0);
     if (manual && player.navPath) { player.navPath = null; player.navName = ""; navTipEl.classList.remove("show"); }
 
+    const wantRun = !!(keys["shift"] || player.runLock || stick.mag > 0.85);
+
     if (manual) {
       const len = Math.hypot(dx, dy) || 1;
       dx /= len; dy /= len;
+      player.mvx = dx; player.mvy = dy;
       if (Math.abs(dx) > Math.abs(dy)) player.facing = dx > 0 ? "right" : "left";
       else player.facing = dy > 0 ? "down" : "up";
+      player.running = wantRun;
       player.moving = true;
-      const v = player.speed * dt;
-      let nx = player.wx + dx * v, ny = player.wy + dy * v;
-      let gN = worldToGrid(nx, player.wy);
-      if (!blocked(gN.gx, gN.gy)) player.wx = nx;
-      gN = worldToGrid(player.wx, ny);
-      if (!blocked(gN.gx, gN.gy)) player.wy = ny;
-      player.phase += dt * 9;
+      const speed = wantRun ? RUN_SPEED : WALK_SPEED;
+      moveBy(dx, dy, speed * dt);
+      player.phase += dt * (wantRun ? 14.5 : 9);
+      player.idleT = 0;
+      if (wantRun) emitDust(dt, true);
       follow = true; updateFollowBtn();
     } else if (player.navPath && player.navPath.length) {
-      // 自动沿路径点移动
+      // 自动沿路径点移动：默认慢跑（距离远），跑步开关开启时快跑
+      const fast = !!player.runLock;
+      const speed = fast ? RUN_SPEED : JOG_SPEED;
       const tgt = player.navPath[0];
       const ddx = tgt.x - player.wx, ddy = tgt.y - player.wy;
       const dist = Math.hypot(ddx, ddy);
-      const R = 12;                      // 到达半径（世界像素，小于避障墙距）
+      const R = 12;
       if (dist < R) {
         player.navPath.shift(); navStuck = 0;
         if (!player.navPath.length) {
-          player.navPath = null; player.moving = false;
+          player.navPath = null; player.moving = false; player.running = false;
           setNavTip(player.navName ? "已到达：" + player.navName : "已到达", true);
           player.navName = "";
         }
-        return;
+      } else {
+        const ux = ddx / dist, uy = ddy / dist;
+        player.mvx = ux; player.mvy = uy;
+        if (Math.abs(ux) > Math.abs(uy)) player.facing = ux > 0 ? "right" : "left";
+        else player.facing = uy > 0 ? "down" : "up";
+        player.running = true;          // 寻路为慢跑/快跑姿态
+        player.moving = true;
+        const v = Math.min(speed * dt, dist);
+        const moved = moveBy(ux, uy, v);
+        if (moved < v * 0.25) {
+          navStuck++;
+          if (navStuck > 10) { player.navPath.shift(); navStuck = 0; }
+        } else navStuck = 0;
+        player.phase += dt * (fast ? 14.5 : 11.5);
+        player.idleT = 0;
+        emitDust(dt, fast);
+        follow = true; updateFollowBtn();
       }
-      player.moving = true;
-      const ux = ddx / dist, uy = ddy / dist;
-      if (Math.abs(ux) > Math.abs(uy)) player.facing = ux > 0 ? "right" : "left";
-      else player.facing = uy > 0 ? "down" : "up";
-      const v = Math.min(player.speed * dt, dist);
-      const ox = player.wx, oy = player.wy;
-      const nx = player.wx + ux * v, ny = player.wy + uy * v;
-      const gAll = worldToGrid(nx, ny);
-      if (!blocked(gAll.gx, gAll.gy)) { player.wx = nx; player.wy = ny; }
-      else {
-        // 轴分离贴墙
-        const gx = worldToGrid(nx, player.wy);
-        if (!blocked(gx.gx, gx.gy)) player.wx = nx;
-        const gy = worldToGrid(player.wx, ny);
-        if (!blocked(gy.gx, gy.gy)) player.wy = ny;
-      }
-      // 卡住检测：几乎没位移则放弃当前点，避免死等
-      if (Math.hypot(player.wx - ox, player.wy - oy) < v * 0.25) {
-        navStuck++;
-        if (navStuck > 10) { player.navPath.shift(); navStuck = 0; }
-      } else navStuck = 0;
-      player.phase += dt * 9;
-      follow = true; updateFollowBtn();
     } else {
       player.moving = false;
+      player.running = false;
+      player.idleT += dt;
       navStuck = 0;
+    }
+    updateDust(dt);
+  }
+
+  // ---------- 门开合 + 进入场地 ----------
+  const enterBanner = document.getElementById("enterBanner");
+  let bannerTimer = null;
+  function showZone(text, sub) {
+    document.getElementById("ebTitle").textContent = text;
+    document.getElementById("ebSub").textContent = sub || "";
+    enterBanner.classList.add("show");
+    clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => enterBanner.classList.remove("show"), 1900);
+  }
+  function updateGates(dt) {
+    const pg = worldToGrid(player.wx, player.wy);
+    const k = Math.min(1, dt * 5);
+    for (const F of fences) {
+      const g = F.g;
+      const dist = Math.hypot(pg.gx - g.cx, pg.gy - g.cy);
+      const target = dist < GATE_HALF + 5.5 ? 1 : 0;
+      F.open += (target - F.open) * k;
+      const nowIn = insideField(pg.gx, pg.gy, F);
+      if (nowIn && !F.inside) showZone("进入 · " + F.zone, "由入口进入，操场内可自由行走");
+      F.inside = nowIn;
+    }
+    for (const gt of CAMPUS_GATES) {
+      const d = Math.hypot(pg.gx - gt.cx, pg.gy - gt.cy);
+      const target = d < 7 ? 1 : 0;
+      gt.open += (target - gt.open) * k;
+      if (target && !gt.greeted) {
+        gt.greeted = true;
+        setNavTip("已到达" + gt.label + "，校园外部暂未开放", true);
+      } else if (!target && d > 9.5) {
+        gt.greeted = false;
+      }
     }
   }
 
@@ -299,13 +475,16 @@
   function setJoy(e) {
     let dx = e.clientX - joyCX, dy = e.clientY - joyCY;
     const d = Math.hypot(dx, dy);
+    const mag = Math.min(1, d / joyR);
     if (d > joyR) { dx = dx / d * joyR; dy = dy / d * joyR; }
     joyKnob.style.transform = "translate(" + dx + "px," + dy + "px)";
-    if (d > 8) { stick.x = dx / joyR; stick.y = dy / joyR; }
-    else { stick.x = 0; stick.y = 0; }
+    if (d > 8) { stick.x = dx / joyR; stick.y = dy / joyR; stick.mag = mag; }
+    else { stick.x = 0; stick.y = 0; stick.mag = 0; }
+    joyKnob.classList.toggle("run", mag > 0.85);
   }
   function resetJoy() {
-    joyId = null; stick.x = 0; stick.y = 0;
+    joyId = null; stick.x = 0; stick.y = 0; stick.mag = 0;
+    joyKnob.classList.remove("run");
     joyKnob.style.transform = "translate(0px,0px)";
   }
   joyZone.addEventListener("pointerdown", e => {
@@ -443,34 +622,164 @@
   const btnFollow = document.getElementById("btnFollow");
   function updateFollowBtn() { btnFollow.classList.toggle("active", follow); }
   btnFollow.onclick = () => { follow = true; updateFollowBtn(); };
+  const btnRun = document.getElementById("btnRun");
+  function updateRunBtn() {
+    btnRun.textContent = "跑步：" + (player.runLock ? "开" : "关");
+    btnRun.classList.toggle("run-active", player.runLock);
+  }
+  btnRun.onclick = () => { player.runLock = !player.runLock; updateRunBtn(); };
   document.getElementById("btnReset").onclick = () => {
     follow = false; centerView(); updateFollowBtn();
   };
 
-  // ---------- chibi 像素角色帧 ----------
+  // ---------- 扬尘（地面层，跑步脚后） ----------
+  function drawDust() {
+    const z = view.zoom;
+    if (z < 0.12 || !dust.length) return;
+    for (const p of dust) {
+      const a = Math.max(0, p.life / p.max);
+      const x = w2sX(p.x), y = w2sY(p.y);
+      const r = p.s * z * (1.7 - a * 0.7);
+      ctx.fillStyle = "rgba(214,198,160," + (0.55 * a).toFixed(3) + ")";
+      ctx.fillRect(x - r / 2, y - r / 2, r, r);
+    }
+  }
+
+  // ---------- chibi 像素角色（放大 + 步态起伏 / 呼吸 / 跑步前倾） ----------
   function drawPlayer() {
     const g = worldToGrid(player.wx, player.wy);
     const sx = w2sX(player.wx), sy = w2sY(player.wy);
     const z = view.zoom;
     if (z < 0.12) {                           // 远景只画点
-      ctx.fillStyle = "#5b4a6b";
-      ctx.beginPath(); ctx.arc(sx, sy, 3.5, 0, 7); ctx.fill();
+      ctx.fillStyle = player.running ? "#ffd25a" : "#5b4a6b";
+      ctx.beginPath(); ctx.arc(sx, sy, player.running ? 4.5 : 3.5, 0, 7); ctx.fill();
       return { depth: g.gx + g.gy };
     }
-    const fw = 64 * z, fh = 80 * z;           // 帧图世界尺寸 64×80
-    const frames = playerFrames[player.facing];
+    const fw = FRAME_W * z, fh = FRAME_H * z; // 放大后的帧尺寸
+    const useRun = player.running && runFrames[player.facing] && runFrames[player.facing][0];
+    const frames = (useRun ? runFrames : walkFrames)[player.facing];
     const fi = player.moving ? (Math.floor(player.phase) % 4) : 0;
-    const pimg = frames && frames[fi] ? frames[fi] : null;
-    const oldSmooth = ctx.imageSmoothingEnabled;
-    ctx.imageSmoothingEnabled = z < 0.85;     // 放大走像素硬边
-    // 影子
-    ctx.fillStyle = "rgba(20,30,40,.28)";
-    ctx.beginPath(); ctx.ellipse(sx, sy + 2 * z, 14 * z, 5 * z, 0, 0, 7); ctx.fill();
-    if (pimg) {
-      ctx.drawImage(pimg, sx - fw / 2, sy - fh, fw, fh);  // 底部对齐脚点
+    const pimg = frames && frames[fi] ? frames[fi] : (frames && frames[0]);
+
+    // 步态起伏（抬腿帧身体抬高）/ 站立呼吸
+    let bob = 0;
+    if (player.moving) {
+      const amp = player.running ? 4.4 : 2.2;
+      bob = -Math.abs(Math.sin(player.phase * Math.PI / 2)) * amp * z;
+    } else {
+      bob = -Math.sin(player.idleT * 1.8) * 1.0 * z;
     }
-    ctx.imageSmoothingEnabled = oldSmooth;
+    const lift = player.moving ? Math.abs(Math.sin(player.phase * Math.PI / 2)) : 0;
+
+    // 影子（抬腿离地时变小、变淡）
+    const base = (useRun ? 20 : 18) * z;
+    const sr = base * (1 - lift * 0.16);
+    ctx.fillStyle = "rgba(20,30,40," + (0.3 * (1 - lift * 0.28)).toFixed(3) + ")";
+    ctx.beginPath(); ctx.ellipse(sx, sy + 3 * z, sr, sr * 0.36, 0, 0, 7); ctx.fill();
+
+    if (pimg) {
+      const oldSmooth = ctx.imageSmoothingEnabled;
+      ctx.imageSmoothingEnabled = z < 0.85;     // 放大走像素硬边
+      ctx.save();
+      ctx.translate(sx, sy + bob);             // 脚点为变换原点
+      if (player.running) {
+        // 跑步前倾：左右方向绕脚点旋转，上下方向纵向压扁
+        if (player.facing === "right") ctx.rotate(0.16);
+        else if (player.facing === "left") ctx.rotate(-0.16);
+        else if (player.facing === "down") ctx.scale(1.05, 0.92);
+        else ctx.scale(1.03, 0.97);
+      }
+      ctx.drawImage(pimg, -fw / 2, -fh, fw, fh);
+      ctx.restore();
+      ctx.imageSmoothingEnabled = oldSmooth;
+    }
     return { depth: g.gx + g.gy };
+  }
+
+  // ---------- 门（操场栅栏门绕轴开 + 校门伸缩门收拢） ----------
+  function gScreen(cgx, cgy) {
+    const w = gridToWorld(cgx, cgy);
+    return { x: w2sX(w.x), y: w2sY(w.y) };
+  }
+  // 一块竖立栅栏板（地面基线 a→b，向上高度 H）
+  function drawFencePanel(a, b, H, z, panel, bar) {
+    const h = H * z;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    ctx.lineTo(b.x, b.y - h); ctx.lineTo(a.x, a.y - h); ctx.closePath();
+    ctx.fillStyle = panel; ctx.fill();
+    ctx.strokeStyle = bar; ctx.lineWidth = Math.max(1, 1.6 * z); ctx.lineCap = "round";
+    const N = 5;
+    for (let i = 0; i <= N; i++) {
+      const tt = i / N, px = a.x + (b.x - a.x) * tt, py = a.y + (b.y - a.y) * tt;
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px, py - h); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(a.x, a.y - h); ctx.lineTo(b.x, b.y - h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(a.x, a.y - h * 0.55); ctx.lineTo(b.x, b.y - h * 0.55); ctx.stroke();
+  }
+  function drawPost(p, H, z) {
+    const h = H * z;
+    ctx.fillStyle = "#2f6b3d";
+    ctx.fillRect(p.x - 2.6 * z, p.y - h, 5.2 * z, h);
+    ctx.fillStyle = "#3f8a52";
+    ctx.fillRect(p.x - 2.6 * z, p.y - h, 1.8 * z, h);
+    ctx.fillStyle = "#ffd27a";
+    ctx.fillRect(p.x - 2.2 * z, p.y - h - 4.5 * z, 4.4 * z, 4.5 * z);
+  }
+  function drawFieldGate(F) {
+    const z = view.zoom;
+    if (z < 0.1) return;
+    const g = F.g;
+    const theta = F.open * Math.PI / 2, c = Math.cos(theta), s = Math.sin(theta);
+    const p1 = { gx: g.cx - GATE_HALF * g.along.gx, gy: g.cy - GATE_HALF * g.along.gy };
+    const p2 = { gx: g.cx + GATE_HALF * g.along.gx, gy: g.cy + GATE_HALF * g.along.gy };
+    const e1 = { gx: p1.gx + GATE_HALF * (g.along.gx * c + g.out.gx * s),
+                 gy: p1.gy + GATE_HALF * (g.along.gy * c + g.out.gy * s) };
+    const e2 = { gx: p2.gx + GATE_HALF * (-g.along.gx * c + g.out.gx * s),
+                 gy: p2.gy + GATE_HALF * (-g.along.gy * c + g.out.gy * s) };
+    const H = 38;
+    const A1 = gScreen(p1.gx, p1.gy), A2 = gScreen(p2.gx, p2.gy);
+    const B1 = gScreen(e1.gx, e1.gy), B2 = gScreen(e2.gx, e2.gy);
+    // 入口门洞（缺口处深色提示）
+    const midP = gScreen(g.cx, g.cy);
+    ctx.fillStyle = "rgba(40,60,45,.22)";
+    ctx.beginPath(); ctx.ellipse(midP.x, midP.y, GATE_HALF * 1.55 * z, GATE_HALF * 0.62 * z, 0, 0, 7); ctx.fill();
+    // 两扇门页
+    drawFencePanel(A1, B1, H, z, "rgba(74,140,90,.30)", "#357a48");
+    drawFencePanel(A2, B2, H, z, "rgba(74,140,90,.30)", "#357a48");
+    // 门柱
+    drawPost(A1, H + 10, z);
+    drawPost(A2, H + 10, z);
+    // 门楣
+    const top = (H + 10) * z;
+    ctx.strokeStyle = "#2f6b3d"; ctx.lineWidth = Math.max(2, 4 * z); ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(A1.x, A1.y - top); ctx.lineTo(A2.x, A2.y - top); ctx.stroke();
+  }
+  // 校门伸缩门（竖杆向一侧收拢）
+  function drawCampusGate(gt) {
+    const z = view.zoom;
+    if (z < 0.1) return;
+    const W = 5.2, H = 30, N = 8, t = gt.open;
+    const ocx = gt.cx - gt.out.gx * 0.8, ocy = gt.cy - gt.out.gy * 0.8;
+    const span = W * (1 - 0.8 * t), start = -W / 2;
+    const pts = [];
+    for (let i = 0; i <= N; i++) {
+      const off = start + span * i / N;
+      pts.push(gScreen(ocx + off * gt.along.gx, ocy + off * gt.along.gy));
+    }
+    const h = H * z;
+    ctx.strokeStyle = "#c8ced8"; ctx.lineWidth = Math.max(1, 1.4 * z);
+    for (let i = 0; i < N; i++) {
+      ctx.beginPath();
+      ctx.moveTo(pts[i].x, pts[i].y - h); ctx.lineTo(pts[i + 1].x, pts[i + 1].y);
+      ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[i + 1].x, pts[i + 1].y - h);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#9aa3b2";
+    for (const p of pts) ctx.fillRect(p.x - 1.3 * z, p.y - h, 2.6 * z, h);
+    const pole = gScreen(ocx + start * gt.along.gx, ocy + start * gt.along.gy);
+    ctx.fillStyle = "#5a6473";
+    ctx.fillRect(pole.x - 2.4 * z, pole.y - h - 6 * z, 4.8 * z, h + 6 * z);
   }
 
   // ---------- 主循环 ----------
@@ -603,9 +912,15 @@
     }
 
     drawPath();   // 寻路路径（地面层）
+    drawDust();   // 跑步扬尘（地面层）
 
-    // 深度排序：建筑 + 角色
+    // 深度排序：建筑 + 门 + 角色
     const drawList = D.buildings.map(b => ({ kind: "b", depth: b.depth, b }));
+    for (const F of fences) drawList.push({ kind: "fg", depth: F.g.cx + F.g.cy, F });
+    for (const gt of CAMPUS_GATES) {
+      const ocx = gt.cx - gt.out.gx * 0.8, ocy = gt.cy - gt.out.gy * 0.8;
+      drawList.push({ kind: "cg", depth: ocx + ocy, gt });
+    }
     const pg = worldToGrid(player.wx, player.wy);
     drawList.push({ kind: "p", depth: pg.gx + pg.gy });
     drawList.sort((a, b) => a.depth - b.depth);
@@ -620,6 +935,10 @@
         const dx = b.paste[0] * z + view.x;
         const dy = b.paste[1] * z + view.y;
         ctx.drawImage(img, x0, y0, bw, bh, dx, dy, bw * b.scale * z, bh * b.scale * z);
+      } else if (it.kind === "fg") {
+        drawFieldGate(it.F);
+      } else if (it.kind === "cg") {
+        drawCampusGate(it.gt);
       } else {
         drawPlayer();
       }
@@ -632,6 +951,7 @@
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     updatePlayer(dt);
+    updateGates(dt);
     if (follow) {
       const sx = w2sX(player.wx), sy = w2sY(player.wy);
       view.x += (window.innerWidth * 0.5 - sx);
