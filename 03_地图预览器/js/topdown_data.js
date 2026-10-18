@@ -662,7 +662,7 @@ window.TOPDOWN_DATA = {
    "w": 804,
    "h": 676,
    "kind": "activity",
-   "dy": 203
+   "dy": 0
   },
   "CAN-YULAN": {
    "file": "img/topdown/sprites/CAN-YULAN.png",
