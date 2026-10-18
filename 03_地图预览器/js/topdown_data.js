@@ -606,21 +606,21 @@ window.TOPDOWN_DATA = {
    "w": 944,
    "h": 1040,
    "kind": "gym",
-   "dy": 21
+   "dy": 0
   },
   "TEACH-1": {
    "file": "img/topdown/sprites/TEACH-1.png",
    "w": 2128,
    "h": 1148,
    "kind": "teaching",
-   "dy": 22
+   "dy": 0
   },
   "LAB-TECH": {
    "file": "img/topdown/sprites/LAB-TECH.png",
    "w": 1184,
    "h": 1784,
    "kind": "lab",
-   "dy": 391
+   "dy": 0
   },
   "GATE-S": {
    "file": "img/topdown/sprites/GATE-S.png",
@@ -655,7 +655,7 @@ window.TOPDOWN_DATA = {
    "w": 956,
    "h": 980,
    "kind": "teaching",
-   "dy": 228
+   "dy": 0
   },
   "ACT": {
    "file": "img/topdown/sprites/ACT.png",
@@ -669,14 +669,14 @@ window.TOPDOWN_DATA = {
    "w": 364,
    "h": 544,
    "kind": "canteen",
-   "dy": 132
+   "dy": 0
   },
   "CAN-ZIZHU": {
    "file": "img/topdown/sprites/CAN-ZIZHU.png",
    "w": 396,
    "h": 696,
    "kind": "canteen",
-   "dy": 18
+   "dy": 0
   },
   "ENG-TRAIN": {
    "file": "img/topdown/sprites/ENG-TRAIN.png",
@@ -697,7 +697,7 @@ window.TOPDOWN_DATA = {
    "w": 2096,
    "h": 1384,
    "kind": "nature",
-   "dy": 9
+   "dy": 60
   },
   "GATE-W": {
    "file": "img/topdown/sprites/GATE-W.png",

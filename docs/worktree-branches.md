@@ -44,6 +44,8 @@ ba3c55f  merge(td): 合入轮廓重画-中央群（feat/td/shapes-central）
 - `acb1b1f` ENG-TRAIN 降到 1.2 让出 FIELD-N 门通道 + final2/scale 对比截图
 - `a59b7d5/ba3c55f` 三轮合入轮廓重画 10 栋（双遍质检）
 - `e645bcd` 轮廓重画后 sprite 画布内偏移 dy 校正 + shape 对比 10 组 + final3 16 张
+- `1bbe492` 整栋 fit-zoom 重拍（官方局部↔实景对比）
+- TD-4 美术轮：8 栋 sprite AI 美术做满+轮廓精修（双盲评 PASS），dy 重算 + 全量回归 + final4 截图
 
 ## 红线执行情况
 

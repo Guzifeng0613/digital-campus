@@ -31,7 +31,11 @@ RISE = {  # 立面/屋顶向北延伸高度（世界 px），见 docs/topdown-sp
 }
 # 接线期微调：sprite 相对锚点的 y 偏移（世界 px，正值=整体下移=偏南）
 DY_HINT = {
-    "MOUNT-YUPING": 0,   # 山体内容在画布下半部，接线后视观感再调
+    # TD-4 美术轮后实测底边透明边距×缩放系数；其余 8 栋沿用
+    "TEACH-1": 0, "TEACH-2": 0, "ACT": 0, "CAN-YULAN": 0,
+    "GYM": 0, "CAN-ZIZHU": 0, "LAB-TECH": 0,
+    "MOUNT-YUPING": 60,   # 底边距 52×1.15
+    "ENG-TRAIN": 48,
 }
 
 

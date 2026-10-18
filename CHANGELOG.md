@@ -2,6 +2,16 @@
 
 本项目版本号遵循语义化版本（SemVer）。
 
+## [2.3.0-topdown] - 2026-10-18
+
+TD-4 美术轮：8 栋 sprite AI 美术做满 + 轮廓精修。
+
+### 改动
+- **重做 8 栋**：TEACH-1 / TEACH-2 / ACT / CAN-YULAN / GYM / CAN-ZIZHU / LAB-TECH / MOUNT-YUPING（红柱白墙/玻璃/屋顶设备/门廊/中庭写实填充，禁白描边板/纯色块/窄环大空院/白等高线）；经独立双盲评（轮廓+美术）PASS，零品红/四角透明。
+- **dy 重算**：新 sprite 底边透明边距重测，TEACH-1/TEACH-2/ACT/YULAN/GYM/ZIZHU/LAB 边距归 0，MOUNT-YUPING 底边距 52×1.15=60。
+- **回归**：16 栋 BFS 全可达、两操场唯一缺口横幅、东西伸缩门开闸、移动端摇杆、信息卡配图正常；console 无 JS 错误。
+- 实景对比 `shape_official_vs_scene/` 8 组 + `final4_*.png` 14 张。
+
 ## [2.2.0-topdown] - 2026-10-18
 
 三轮：10 栋建筑轮廓按官方平面图重画（双遍质检 10/10 PASS）。
