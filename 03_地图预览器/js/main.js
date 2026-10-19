@@ -7,13 +7,25 @@
   const TD = window.TOPDOWN_DATA;
   const [GX0, GY0, GX1, GY1] = D.meta.gridRange;
 
-  // ---------- 投影常量（见 docs/topdown-spec.md） ----------
-  const TILE = 48;
+  // ---------- 等距投影（2:1 菱形，星露谷式）：逻辑网格与投影解耦 ----------
+  // 逻辑网格 gx(东)/gy(南) 为整数；等距世界坐标：
+  //   isoX=(gx-gy)*TW/2（东→右下、南→左下），isoY=(gx+gy)*TH/2（南角在画面最下）。
+  const TILE = 48;   // 逻辑参考边长（方形小地图/数据兼容）
   const GRAIN = 4;
-  const WORLD_W = (GX1 - GX0) * TILE;      // 6624
-  const WORLD_H = (GY1 - GY0) * TILE;      // 12730.5
-  const WORLD_CX = (GX0 + GX1) / 2 * TILE;  // 3600
-  const WORLD_CY = (GY0 + GY1) / 2 * TILE;   // 6652.8
+  const TW = 64, TH = 32;                 // 等距菱形 tile：宽 64 高 32（2:1）
+  const isoX = (gx, gy) => (gx - gy) * TW / 2;
+  const isoY = (gx, gy) => (gx + gy) * TH / 2;
+  // 世界菱形包围盒（4 个网格角点投影后）
+  const _corners = [[GX0, GY0], [GX1, GY0], [GX0, GY1], [GX1, GY1]]
+    .map(p => [isoX(p[0], p[1]), isoY(p[0], p[1])]);
+  const WORLD_MINX = Math.min(..._corners.map(p => p[0]));
+  const WORLD_MAXX = Math.max(..._corners.map(p => p[0]));
+  const WORLD_MINY = Math.min(..._corners.map(p => p[1]));
+  const WORLD_MAXY = Math.max(..._corners.map(p => p[1]));
+  const WORLD_W = WORLD_MAXX - WORLD_MINX;   // 菱形包围盒宽
+  const WORLD_H = WORLD_MAXY - WORLD_MINY;   // 菱形包围盒高
+  const WORLD_CX = (WORLD_MINX + WORLD_MAXX) / 2;
+  const WORLD_CY = (WORLD_MINY + WORLD_MAXY) / 2;
 
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
@@ -42,26 +54,27 @@
   const w2sY = wy => wy * view.zoom + view.y;
   const s2wX = sx => (sx - view.x) / view.zoom;
   const s2wY = sy => (sy - view.y) / view.zoom;
-  const gridToWorld = (gx, gy) => ({ x: gx * TILE, y: gy * TILE });
-  const worldToGrid = (wx, wy) => ({ gx: wx / TILE, gy: wy / TILE });
-
-  // ---------- 建筑整体缩放（星露谷式饱满紧凑） ----------
-  // 锚点 = footprint 南缘中点（fx+fw/2, fy+fh）固定；放大后向北(画面上)与两侧扩展，南缘不动。
-  // 全局默认 1.5；按 id 覆盖（由 overlap/road 校验脚本迭代得出，见 docs）。
-  const BUILD_SCALE = 1.5;
-  const BUILD_SCALE_ID = {
-    "TEACH-1": 1.35, "TEACH-2": 1.50, "LIB": 1.32, "WENLI": 1.50,
-    "LAB-TECH": 1.32, "ACT": 1.30, "CAN-YULAN": 1.50, "CAN-ZIZHU": 1.50,
-    "ENG-TRAIN": 1.20, "GYM": 1.30, "FIELD-W": 1.40, "FIELD-N": 1.40,
-    "GATE-S": 1.10, "GATE-E": 1.05, "GATE-W": 1.05, "MOUNT-YUPING": 1.15
+  const gridToWorld = (gx, gy) => ({ x: isoX(gx, gy), y: isoY(gx, gy) });
+  const worldToGrid = (wx, wy) => {
+    const A = 2 * wx / TW, B = 2 * wy / TH;   // A=gx-gy, B=gx+gy
+    return { gx: (A + B) / 2, gy: (B - A) / 2 };
   };
-  // 无害调试钩子：URL ?scale=1 强制全局系数（用于放大前后对比截图，不影响默认）
-  const DEBUG_SCALE = parseFloat(new URLSearchParams(location.search).get("scale")) || 0;
-  function buildingScale(b) {
-    if (DEBUG_SCALE > 0) return DEBUG_SCALE;
-    return BUILD_SCALE_ID[b.id] != null ? BUILD_SCALE_ID[b.id] : BUILD_SCALE;
+  // 网格 footprint 矩形 -> 等距菱形 4 角（西北/东北/南/西南）
+  function isoDiamond(fx, fy, fw, fh) {
+    return [
+      { x: isoX(fx, fy), y: isoY(fx, fy) },                       // 西北（最上）
+      { x: isoX(fx + fw, fy), y: isoY(fx + fw, fy) },             // 东北（右）
+      { x: isoX(fx + fw, fy + fh), y: isoY(fx + fw, fy + fh) },   // 南（最下）
+      { x: isoX(fx, fy + fh), y: isoY(fx, fy + fh) }              // 西南（左）
+    ];
   }
-  // 放大后视觉 footprint（网格单位）：中心 x=fx+fw/2 不变，南缘 y=fy+fh 不变，宽 fw*s、高 fh*s（向北扩展）
+
+  // ---------- 逻辑 footprint（碰撞/寻路/围栏/小地图）：等距下贴合真实地块 ----------
+  const LOGIC_SCALE_ID = {}; // 可逐栋微调，默认 1
+  function buildingScale(b) {
+    return LOGIC_SCALE_ID[b.id] != null ? LOGIC_SCALE_ID[b.id] : 1;
+  }
+  // 逻辑视觉 footprint（网格单位）：南缘 y=fy+fh 不变，向北扩展
   function visRect(b) {
     const s = buildingScale(b);
     const [fx, fy, fw, fh] = b.grid;
@@ -69,16 +82,44 @@
     const cx = fx + fw / 2;
     return { x: cx - nfw / 2, y: (fy + fh) - nfh, w: nfw, h: nfh, s };
   }
-  // 点击命中盒：用放大后的整张 sprite 画布矩形（含屋顶悬挑），底边中点锚定
-  function clickRect(b) {
-    const s = buildingScale(b);
-    const anX = b.grid[0] + b.grid[2] / 2, anY = b.grid[1] + b.grid[3]; // 网格单位
-    const real = spriteImgs[b.id];
-    if (real) {
-      const gw = real.width * s / TILE, gh = real.height * s / TILE;
-      return { x: anX - gw / 2, y: anY - gh, w: gw, h: gh };
-    }
-    return visRect(b);
+  // 点击命中盒：用逻辑 footprint 网格矩形（等距逆变换后判断）
+  function clickRect(b) { return visRect(b); }
+
+  // ---------- 等距 sprite 视觉几何（图像→等距世界） ----------
+  // 每栋南角在图像中的归一化锚点：ax=水平中心（南角），ay=主体南墙根所在高度（避开南伸台阶）。
+  // ay = 南墙根/场地南缘（地面接地点）在图像高度的归一化位置，锚到 footprint 南角。
+  const ANCHOR_AY = {
+    "FIELD-W": 0.98, "GYM": 0.99, "TEACH-1": 0.99, "LAB-TECH": 0.95, "GATE-S": 0.97,
+    "GATE-E": 0.92, "LIB": 0.99, "WENLI": 0.95, "TEACH-2": 0.97, "ACT": 0.85,
+    "CAN-YULAN": 1.0, "CAN-ZIZHU": 0.94, "ENG-TRAIN": 0.96, "FIELD-N": 0.98,
+    "MOUNT-YUPING": 1.0, "GATE-W": 0.81
+  };
+  // ax = 南角（最近角，南墙↔东墙交汇）在图像宽度的归一化位置；标准等距矩形=fw/(fw+fh)，异形/台阶楼目视微调
+  const ANCHOR_AX = {
+    "FIELD-W": 0.36, "GYM": 0.50, "TEACH-1": 0.68, "LAB-TECH": 0.42, "GATE-S": 0.71,
+    "GATE-E": 0.35, "LIB": 0.57, "WENLI": 0.47, "TEACH-2": 0.53, "ACT": 0.60,
+    "CAN-YULAN": 0.46, "CAN-ZIZHU": 0.41, "ENG-TRAIN": 0.48, "FIELD-N": 0.33,
+    "MOUNT-YUPING": 0.64, "GATE-W": 0.33
+  };
+  const ISO_K = {
+    "MOUNT-YUPING": 0.92, "FIELD-W": 1.0, "FIELD-N": 1.0,
+    "TEACH-1": 1.0, "LAB-TECH": 1.0, "GYM": 1.04, "ACT": 1.06, "ENG-TRAIN": 1.06,
+    "LIB": 1.1, "WENLI": 1.12, "TEACH-2": 1.1, "CAN-YULAN": 1.12, "CAN-ZIZHU": 1.16,
+    "GATE-S": 1.06, "GATE-E": 1.08, "GATE-W": 1.08
+  }; // 大组合保持1.0，单栋小楼放大饱满
+  function spriteIsoScale(b, real) {
+    const [, , fw, fh] = b.grid;
+    const k = ISO_K[b.id] != null ? ISO_K[b.id] : 1.1;
+    return (fw + fh) * TW / 2 * k / real.width;
+  }
+  // 返回南角世界坐标、归一化锚点、图像缩放后的世界宽高
+  function spriteAnchor(b, real) {
+    const [fx, fy, fw, fh] = b.grid;
+    const sc = spriteIsoScale(b, real);
+    const south = isoDiamond(fx, fy, fw, fh)[2];
+    const ax = ANCHOR_AX[b.id] != null ? ANCHOR_AX[b.id] : 0.5;
+    const ay = ANCHOR_AY[b.id] != null ? ANCHOR_AY[b.id] : 0.95;
+    return { x: south.x, y: south.y, ax, ay, pxW: real.width * sc, pxH: real.height * sc, sc };
   }
 
   // ---------- 地面 tile（C 批次美术 tile，48×48 无缝 PNG，BOOT 时加载） ----------
@@ -153,65 +194,110 @@
     // 道路不再盖进格点：由 paintRoadLayer 矢量绘制（先水后路，与 buildPre/近景同一套）
   })();
 
-  // ---------- 矢量道路层：折线 round join/cap + dirt/pave CanvasPattern 纹理 ----------
-  // paved=w>=7 硬铺主路（浅灰缘石+路中线）；其余星露谷土路（双层半透明晕边羽化到草地）。
-  // 近景 drawGround 与低分辨率 groundPre 调用同一 paintRoadLayer，路网一致。
-  const roadPatterns = new WeakMap();
-  function roadPats(g) {
-    let p = roadPatterns.get(g);
-    if (!p) {
-      p = { dirt: g.createPattern(tileImg("dirt"), "repeat"),
-            pave: g.createPattern(tileImg("pave"), "repeat") };
-      roadPatterns.set(g, p);
+  // ---------- 方形世界尺寸（仅供小地图俯视） ----------
+  const SQ_W = (GX1 - GX0) * TILE;
+  const SQ_H = (GY1 - GY0) * TILE;
+
+  // ---------- 道路：等距折线（主地面）与方形折线（小地图）两套 ----------
+  function traceRoadIso(g, gpts) {
+    g.beginPath();
+    for (let i = 0; i < gpts.length; i++) {
+      const x = isoX(gpts[i][0], gpts[i][1]), y = isoY(gpts[i][0], gpts[i][1]);
+      if (i) g.lineTo(x, y); else g.moveTo(x, y);
     }
-    return p;
   }
-  function traceRoad(g, gpts) {
+  function traceRoadSq(g, gpts) {
     g.beginPath();
     for (let i = 0; i < gpts.length; i++) {
       const x = gpts[i][0] * TILE, y = gpts[i][1] * TILE;
       if (i) g.lineTo(x, y); else g.moveTo(x, y);
     }
   }
-  function paintRoadLayer(g) {
-    const pats = roadPats(g);
+  function paintRoadsIso(g) {
     g.lineJoin = "round"; g.lineCap = "round";
-    // 先画全部土路（同色叠底，丁字/十字/弯道由折线几何自然成型、路口融合）
+    for (const r of TD.roads) {
+      if (r.paved) continue;
+      const w = r.w * TH * 1.7;
+      traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(124,96,56,0.28)"; g.lineWidth = w + 26; g.stroke();
+      traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(150,119,74,0.42)"; g.lineWidth = w + 12; g.stroke();
+      traceRoadIso(g, r.gpts); g.strokeStyle = "#c4a46c"; g.lineWidth = w; g.stroke();
+      traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(214,190,140,0.5)"; g.lineWidth = w * 0.5; g.stroke();
+    }
+    for (const r of TD.roads) {
+      if (!r.paved) continue;
+      const w = r.w * TH * 1.7;
+      traceRoadIso(g, r.gpts); g.strokeStyle = "#9c9b91"; g.lineWidth = w + 14; g.stroke();
+      traceRoadIso(g, r.gpts); g.strokeStyle = "#c8c7bd"; g.lineWidth = w; g.stroke();
+      traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(255,255,255,0.5)"; g.lineWidth = Math.max(1.5, 0.28 * TH);
+      g.setLineDash([TH * 1.2, TH * 1.6]); g.stroke(); g.setLineDash([]);
+    }
+  }
+  function paintRoadsSq(g) {
+    g.lineJoin = "round"; g.lineCap = "round";
     for (const r of TD.roads) {
       if (r.paved) continue;
       const w = r.w * TILE;
-      traceRoad(g, r.gpts); g.strokeStyle = "rgba(146,116,72,0.20)"; g.lineWidth = w + 2.0 * TILE; g.stroke(); // 羽化外晕
-      traceRoad(g, r.gpts); g.strokeStyle = "rgba(162,130,82,0.32)"; g.lineWidth = w + 0.9 * TILE; g.stroke(); // 过渡带
-      traceRoad(g, r.gpts); g.strokeStyle = pats.dirt; g.lineWidth = w; g.stroke();               // 路面像素纹理
+      traceRoadSq(g, r.gpts); g.strokeStyle = "rgba(146,116,72,0.25)"; g.lineWidth = w + 2 * TILE; g.stroke();
+      traceRoadSq(g, r.gpts); g.strokeStyle = "#b08d57"; g.lineWidth = w; g.stroke();
     }
-    // 再画硬铺主路（缘石底垫 + pave 纹理 + 中央虚线）
     for (const r of TD.roads) {
       if (!r.paved) continue;
       const w = r.w * TILE;
-      traceRoad(g, r.gpts); g.strokeStyle = "#b9b8ae"; g.lineWidth = w + 0.9 * TILE; g.stroke(); // 缘石
-      traceRoad(g, r.gpts); g.strokeStyle = pats.pave; g.lineWidth = w; g.stroke();            // 硬铺路面
-      traceRoad(g, r.gpts); g.strokeStyle = "rgba(255,255,255,0.45)"; g.lineWidth = Math.max(1, 0.26 * TILE);
-      g.setLineDash([1.3 * TILE, 1.7 * TILE]); g.stroke(); g.setLineDash([]);                  // 路中线
+      traceRoadSq(g, r.gpts); g.strokeStyle = "#a8a79d"; g.lineWidth = w + 0.9 * TILE; g.stroke();
+      traceRoadSq(g, r.gpts); g.strokeStyle = "#c8c7bd"; g.lineWidth = w; g.stroke();
     }
   }
 
-  // ---------- 低分辨率整体地面预渲染（缩放概览用） ----------
-  const PRE = 0.15;
-  const groundPre = document.createElement("canvas");
-  groundPre.width = Math.ceil(WORLD_W * PRE);
-  groundPre.height = Math.ceil(WORLD_H * PRE);
-  function buildPre() {
-    const g = groundPre.getContext("2d");
-    g.fillStyle = "#8fbc5a"; g.fillRect(0, 0, groundPre.width, groundPre.height);
-    const tw = TILE * PRE;
+  // ---------- 等距主地面（一次性预渲染：菱形草 + 水 + 等距道路） ----------
+  const ISOPRE = 0.55;
+  const isoGround = document.createElement("canvas");
+  isoGround.width = Math.ceil(WORLD_W * ISOPRE);
+  isoGround.height = Math.ceil(WORLD_H * ISOPRE);
+  function diamondPath(g, gx, gy, cw, ch) {
+    g.beginPath();
+    g.moveTo(isoX(gx, gy) - WORLD_MINX, isoY(gx, gy) - WORLD_MINY);
+    g.lineTo(isoX(gx + cw, gy) - WORLD_MINX, isoY(gx + cw, gy) - WORLD_MINY);
+    g.lineTo(isoX(gx + cw, gy + ch) - WORLD_MINX, isoY(gx + cw, gy + ch) - WORLD_MINY);
+    g.lineTo(isoX(gx, gy + ch) - WORLD_MINX, isoY(gx, gy + ch) - WORLD_MINY);
+    g.closePath();
+  }
+  function buildIsoGround() {
+    const g = isoGround.getContext("2d");
+    g.setTransform(ISOPRE, 0, 0, ISOPRE, 0, 0);
+    for (let gx = ix0; gx < ix1; gx++) for (let gy = iy0; gy < iy1; gy++) {
+      const t = cellType[ci(gx, gy)];
+      if (t === 5) {
+        const d = (gx * 3 + gy * 7) % 4;
+        g.fillStyle = ["#579bd6", "#5fa0da", "#5597d2", "#63a6dc"][d];
+      } else {
+        const d = (gx * 7 + gy * 13) % 9;
+        g.fillStyle = d === 0 ? "#8ab858" : d === 1 ? "#86b252" : d === 2 ? "#92c05e" : "#88b554";
+      }
+      diamondPath(g, gx, gy, 1, 1); g.fill();
+    }
+    // 等距道路（世界坐标）
+    g.setTransform(ISOPRE, 0, 0, ISOPRE, -WORLD_MINX * ISOPRE, -WORLD_MINY * ISOPRE);
+    paintRoadsIso(g);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  // ---------- 方形小地图地面（俯视，低分辨率） ----------
+  const MMPRE = 0.16;
+  const mmGround = document.createElement("canvas");
+  mmGround.width = Math.ceil(SQ_W * MMPRE);
+  mmGround.height = Math.ceil(SQ_H * MMPRE);
+  function buildMmGround() {
+    const g = mmGround.getContext("2d");
+    g.fillStyle = "#8fbc5a"; g.fillRect(0, 0, mmGround.width, mmGround.height);
+    const tw = TILE * MMPRE;
     for (let gx = ix0; gx <= ix1; gx++) for (let gy = iy0; gy <= iy1; gy++) {
       const t = cellType[ci(gx, gy)];
-      g.drawImage(tileImg(TILE_ORDER[t]),
-        (gx - GX0) * tw, (gy - GY0) * tw, tw + 1, tw + 1);
+      if (t === 5) g.fillStyle = "#5aa0d6";
+      else g.fillStyle = ((gx * 7 + gy * 13) % 5 === 0) ? "#88b454" : "#8fbc5a";
+      g.fillRect((gx - GX0) * tw, (gy - GY0) * tw, tw + 1, tw + 1);
     }
-    // 矢量道路层：变换到世界坐标后与近景同一套 paintRoadLayer
-    g.setTransform(PRE, 0, 0, PRE, -GX0 * TILE * PRE, -GY0 * TILE * PRE);
-    paintRoadLayer(g);
+    g.setTransform(MMPRE, 0, 0, MMPRE, -GX0 * TILE * MMPRE, -GY0 * TILE * MMPRE);
+    paintRoadsSq(g);
     g.setTransform(1, 0, 0, 1, 0, 0);
   }
 
@@ -237,10 +323,11 @@
     ...SPRITE_IDS.map(id => loadImg("img/topdown/sprites/" + id + ".png").then(im => spriteImgs[id] = im)),
     ...TILE_IDS.map(t => loadImg("img/topdown/tiles/" + t + ".png").then(im => TILES[t] = im)),
     ...DECOR_IDS.map(t => loadImg("img/topdown/decor/" + t + ".png").then(im => spriteImgs[t] = im))
-  ]).then(() => buildPre());
+  ]).then(() => { buildIsoGround(); buildMmGround(); });
 
   // ---------- D 批角色帧：48×64，锚点脚底中心 (24,64) ----------
   const FRAME_W = 48, FRAME_H = 64;
+  const PLAYER_SCALE = 1.7;   // 等距下人物再放大一点（星露谷饱满比例）
   const PLAYER_DIRS = ["down", "up", "left", "right"];
   const frames = {};   // frames[dir][kind] = [img...]  kind: walk/run/idle
   function loadFrame(dir, kind, f) {
@@ -258,10 +345,11 @@
     ]).then(([w, r, idl]) => { frames[dir] = { walk: w, run: r, idle: [idl] }; })
   ));
 
-  // ---------- 角色 ----------
+  // ---------- 角色（内部坐标用逻辑网格 gx,gy，绘制时投影等距） ----------
   const GATE_S = D.buildings.find(b => b.id === "GATE-S");
-  const start = gridToWorld(GATE_S.grid[0] + GATE_S.grid[2] / 2, GATE_S.grid[1] - 6);
-  const WALK_SPEED = 260, JOG_SPEED = 400, RUN_SPEED = 520;
+  const start = { x: GATE_S.grid[0] + GATE_S.grid[2] / 2, y: GATE_S.grid[1] - 6 };
+  const WALK_SPEED = 7.2, JOG_SPEED = 10.8, RUN_SPEED = 14.0;   // 格/秒
+  const playerScreen = () => ({ sx: w2sX(isoX(player.wx, player.wy)), sy: w2sY(isoY(player.wx, player.wy)) });
   const player = {
     wx: start.x, wy: start.y, phase: 0, idleT: 0, moving: false,
     running: false, runLock: false, facing: "down", dustT: 0,
@@ -270,10 +358,10 @@
   const dust = [];
   function spawnDust() {
     dust.push({
-      x: player.wx - player.mvx * 12 + (Math.random() - 0.5) * 8,
-      y: player.wy - player.mvy * 12 + (Math.random() - 0.5) * 8,
-      vx: -player.mvx * 24 + (Math.random() - 0.5) * 16,
-      vy: -player.mvy * 24 + (Math.random() - 0.5) * 16,
+      x: player.wx - player.mvx * 0.28 + (Math.random() - 0.5) * 0.18,
+      y: player.wy - player.mvy * 0.28 + (Math.random() - 0.5) * 0.18,
+      vx: -player.mvx * 0.6 + (Math.random() - 0.5) * 0.4,
+      vy: -player.mvy * 0.6 + (Math.random() - 0.5) * 0.4,
       life: 0.5, max: 0.5, s: 2 + Math.random() * 2
     });
   }
@@ -381,7 +469,7 @@
     return path;
   }
   function nearestOpen(gx, gy) {
-    const pg = worldToGrid(player.wx, player.wy);
+    const pg = { gx: player.wx, gy: player.wy };
     if (!navBlocked(gx, gy)) return { gx, gy };
     for (let ring = 1; ring <= 12; ring++) {
       let best = null, bd = Infinity;
@@ -406,7 +494,7 @@
     for (let y = gy - m; y <= gy + gh + m; y += step) {
       pts.push({ gx: gx - m, gy: y }); pts.push({ gx: gx + gw + m, gy: y });
     }
-    const pg = worldToGrid(player.wx, player.wy);
+    const pg = { gx: player.wx, gy: player.wy };
     return pts.filter(p => !navBlocked(p.gx, p.gy))
       .sort((a, c) => Math.hypot(a.gx - pg.gx, a.gy - pg.gy) - Math.hypot(c.gx - pg.gx, c.gy - pg.gy));
   }
@@ -422,7 +510,7 @@
       setNavTip(gridPath ? "已在目标附近" : "找不到可达路径", true);
       return;
     }
-    player.navPath = gridPath.map(([gxx, gyy]) => gridToWorld(gxx, gyy));
+    player.navPath = gridPath.map(([gxx, gyy]) => ({ x: gxx, y: gyy }));
     player.navName = name || "";
     navStuck = 0; follow = true; updateFollowBtn();
     setNavTip(name ? "正在前往：" + name : "自动寻路中", false);
@@ -430,10 +518,10 @@
   function navigateToPoint(gx, gy) {
     const t = nearestOpen(gx, gy);
     if (!t) { setNavTip("无法到达那里", true); return; }
-    startNav(bfs(worldToGrid(player.wx, player.wy), t));
+    startNav(bfs(({ gx: player.wx, gy: player.wy }), t));
   }
   function navigateToBuilding(b) {
-    const pg = worldToGrid(player.wx, player.wy);
+    const pg = ({ gx: player.wx, gy: player.wy });
     const spots = openSpotsAround(b).slice(0, 12);
     let best = null, bestLen = Infinity;
     for (const s of spots) {
@@ -446,13 +534,10 @@
   function moveBy(ux, uy, v) {
     const ox = player.wx, oy = player.wy;
     const nx = player.wx + ux * v, ny = player.wy + uy * v;
-    const gAll = worldToGrid(nx, ny);
-    if (!blockedAt(gAll.gx, gAll.gy, PAD)) { player.wx = nx; player.wy = ny; }
+    if (!blockedAt(nx, ny, PAD)) { player.wx = nx; player.wy = ny; }
     else {
-      const gx = worldToGrid(nx, player.wy);
-      if (!blockedAt(gx.gx, gx.gy, PAD)) player.wx = nx;
-      const gy = worldToGrid(player.wx, ny);
-      if (!blockedAt(gy.gx, gy.gy, PAD)) player.wy = ny;
+      if (!blockedAt(nx, player.wy, PAD)) player.wx = nx;
+      if (!blockedAt(player.wx, ny, PAD)) player.wy = ny;
     }
     return Math.hypot(player.wx - ox, player.wy - oy);
   }
@@ -484,7 +569,7 @@
       const tgt = player.navPath[0];
       const ddx = tgt.x - player.wx, ddy = tgt.y - player.wy;
       const dist = Math.hypot(ddx, ddy);
-      if (dist < 14) {
+      if (dist < 0.29) {
         player.navPath.shift(); navStuck = 0;
         if (!player.navPath.length) {
           player.navPath = null; player.moving = false; player.running = false;
@@ -523,7 +608,7 @@
     bannerTimer = setTimeout(() => enterBanner.classList.remove("show"), 1900);
   }
   function updateGates(dt) {
-    const pg = worldToGrid(player.wx, player.wy);
+    const pg = ({ gx: player.wx, gy: player.wy });
     const k = Math.min(1, dt * 5);
     for (const F of fences) {
       const g = F.g;
@@ -699,30 +784,12 @@
     dbg: { blockedAt, bfs, nearestOpen, openSpotsAround, fences, buildingScale, visRect, clickRect }
   };
 
-  // ---------- 绘制：地面 ----------
+  // ---------- 绘制：等距地面 ----------
   function drawGround() {
-    // 概览：整幅低分辨率预渲染
     const gw = WORLD_W * view.zoom, gh = WORLD_H * view.zoom;
-    const gx0 = w2sX(GX0 * TILE), gy0 = w2sY(GY0 * TILE);
-    ctx.imageSmoothingEnabled = view.zoom < 0.5;
-    ctx.drawImage(groundPre, gx0, gy0, gw, gh);
-    // 近景：叠清晰草地 tile + 同一套矢量道路层
-    if (view.zoom >= 0.4) {
-      const x0 = s2wX(0), y0 = s2wY(0), x1 = s2wX(window.innerWidth), y1 = s2wY(window.innerHeight);
-      const g0x = Math.floor(x0 / TILE), g1x = Math.ceil(x1 / TILE);
-      const g0y = Math.floor(y0 / TILE), g1y = Math.ceil(y1 / TILE);
-      for (let gx = g0x; gx <= g1x; gx++) for (let gy = g0y; gy <= g1y; gy++) {
-        if (gx < ix0 || gx > ix1 || gy < iy0 || gy > iy1) continue;
-        const t = cellType[ci(gx, gy)];
-        const tw = TILE * view.zoom;
-        ctx.drawImage(tileImg(TILE_ORDER[t]),
-          w2sX(gx * TILE), w2sY(gy * TILE), tw + 1, tw + 1);
-      }
-      ctx.save();
-      ctx.setTransform(dpr * view.zoom, 0, 0, dpr * view.zoom, view.x * dpr, view.y * dpr);
-      paintRoadLayer(ctx);
-      ctx.restore();
-    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(isoGround, w2sX(WORLD_MINX), w2sY(WORLD_MINY), gw, gh);
+    ctx.imageSmoothingEnabled = false;
   }
   function drawPath() {
     if (!player.navPath || !player.navPath.length) return;
@@ -735,14 +802,14 @@
     ctx.lineJoin = "round"; ctx.lineCap = "round";
     ctx.beginPath();
     pts.forEach((p, i) => {
-      const x = w2sX(p.x), y = w2sY(p.y);
+      const x = w2sX(isoX(p.x, p.y)), y = w2sY(isoY(p.x, p.y));
       if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
     });
     ctx.stroke();
     ctx.setLineDash([]);
     const end = pts[pts.length - 1];
     ctx.fillStyle = "rgba(45,108,223,.95)";
-    ctx.beginPath(); ctx.arc(w2sX(end.x), w2sY(end.y), Math.max(4, 8 * z), 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(w2sX(isoX(end.x, end.y)), w2sY(isoY(end.x, end.y)), Math.max(4, 8 * z), 0, 7); ctx.fill();
     ctx.restore();
   }
   function drawDust() {
@@ -752,118 +819,108 @@
       const a = Math.max(0, p.life / p.max);
       const r = p.s * z * (1.7 - a * 0.7);
       ctx.fillStyle = "rgba(214,198,160," + (0.55 * a).toFixed(3) + ")";
-      ctx.fillRect(w2sX(p.x) - r / 2, w2sY(p.y) - r / 2, r, r);
+      ctx.fillRect(w2sX(isoX(p.x, p.y)) - r / 2, w2sY(isoY(p.x, p.y)) - r / 2, r, r);
     }
   }
 
-  // ---------- 绘制：建筑（占位方块 / 真实 sprite） ----------
-  const RISE = { teaching: 144, lab: 144, library: 144, college: 144, service: 144, activity: 144,
-    canteen: 120, gym: 96, gate: 72, field: 0, nature: 200 };
+  // ---------- 绘制：建筑（等距 sprite / 占位等距方块） ----------
+  const RISE = { teaching: 96, lab: 96, library: 96, college: 96, service: 96, activity: 96,
+    canteen: 84, gym: 72, gate: 48, field: 0, nature: 120 };
   function anchorOf(b) {
     const [fx, fy, fw, fh] = b.grid;
-    return { x: (fx + fw / 2) * TILE, y: (fy + fh) * TILE };
+    return { x: isoX(fx + fw, fy + fh), y: isoY(fx + fw, fy + fh) };  // 南角
   }
   function drawBuilding(b) {
     const z = view.zoom;
-    const s = buildingScale(b);
-    const [fx, fy, fw, fh] = b.grid;
-    const meta = TD.sprites && TD.sprites[b.id];
-    const an = { x: (fx + fw / 2) * TILE, y: (fy + fh) * TILE + (meta ? meta.dy : 0) };
     const real = spriteImgs[b.id];
     if (real) {
-      const gate = campusGates.find(g => g.id === b.id);
-      let w = real.width * z * s, h = real.height * z * s;
-      let dx = an.x * z + view.x - w / 2;
-      if (gate) {
-        // 伸缩门：open 增大时横向向一侧门柱收拢（accordion）
-        const sc = 1 - gate.open * 0.62;
-        w = real.width * z * s * sc;
-        dx = an.x * z + view.x - w;   // 右缘对齐锚点（右侧门柱固定）
-      }
-      ctx.imageSmoothingEnabled = false;   // NEAREST 硬像素，缩放不糊
-      ctx.drawImage(real, dx, an.y * z + view.y - h, w, h);
+      const a = spriteAnchor(b, real);
+      const W = a.pxW * z, H = a.pxH * z;
+      const dx = w2sX(a.x) - a.ax * W;
+      const dy = w2sY(a.y) - a.ay * H;
+      ctx.imageSmoothingEnabled = false;   // NEAREST 硬像素
+      ctx.drawImage(real, dx, dy, W, H);
       ctx.imageSmoothingEnabled = true;
       return;
     }
-    // 占位方块：放大后视觉 footprint + 南立面
+    // 占位等距方块：顶面菱形 + 南墙/东墙立面
     const r = visRect(b);
-    const x0 = w2sX(r.x * TILE), y0 = w2sY(r.y * TILE);
-    const wpx = r.w * TILE * z, hpx = r.h * TILE * z;
-    const rise = (RISE[b.cat] || 120) * z;
+    const d = isoDiamond(r.x, r.y, r.w, r.h);
+    const P = q => ({ x: w2sX(q.x), y: w2sY(q.y) });
+    const p0 = P(d[0]), p1 = P(d[1]), p2 = P(d[2]), p3 = P(d[3]);
+    const rise = b.walkable ? 0 : (RISE[b.cat] || 96) * z;
     const col = b.walkable ? "#5f9e4a" : (GROUP_COLOR[b.group] || "#9fb4d8");
-    ctx.fillStyle = col;
-    ctx.fillRect(x0, y0, wpx, hpx);
-    // 南立面（底部 rise 高的暗带）；walkable 场地为平地，不画
-    if (!b.walkable) {
-      ctx.fillStyle = "rgba(40,40,50,.45)";
-      ctx.fillRect(x0, y0 + hpx - rise, wpx, rise);
+    if (rise > 0) {
+      ctx.fillStyle = "rgba(35,34,46,.65)";
+      ctx.beginPath(); ctx.moveTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
+      ctx.lineTo(p3.x, p3.y + rise); ctx.lineTo(p2.x, p2.y + rise); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "rgba(20,20,30,.75)";
+      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+      ctx.lineTo(p2.x, p2.y + rise); ctx.lineTo(p1.x, p1.y + rise); ctx.closePath(); ctx.fill();
     }
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
+    ctx.closePath(); ctx.fill();
     ctx.strokeStyle = "#2e2418"; ctx.lineWidth = Math.max(1, 2 * z);
-    ctx.strokeRect(x0, y0, wpx, hpx);
+    ctx.beginPath(); ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
+    ctx.closePath(); ctx.stroke();
   }
 
-  // ---------- 绘制：围栏 + 像素门（top-down 俯视木栏） ----------
+  // ---------- 绘制：等距菱形围栏 + 唯一入口滑门 ----------
   function drawFences(F) {
     const z = view.zoom;
     if (z < 0.1) return;
     const [fx, fy, fw, fh] = F.rect;
-    const th = Math.max(3, 6 * z);          // 围栏条带厚度
-    ctx.fillStyle = "#8a6238";
-    ctx.strokeStyle = "#6b4a28"; ctx.lineWidth = Math.max(1, 1.5 * z);
-    const seg = (x0, y0, x1, y1) => {
-      ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
-      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    const th = Math.max(2, 6 * z);
+    const S = (gx, gy) => ({ x: w2sX(isoX(gx, gy)), y: w2sY(isoY(gx, gy)) });
+    const edges = [
+      { a: [fx, fy], b: [fx + fw, fy], side: "gymin" },
+      { a: [fx + fw, fy], b: [fx + fw, fy + fh], side: "gxmax" },
+      { a: [fx, fy + fh], b: [fx + fw, fy + fh], side: "gymax" },
+      { a: [fx, fy], b: [fx, fy + fh], side: "gxmin" }
+    ];
+    const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    ctx.lineCap = "round";
+    for (const e of edges) {
+      const len = Math.hypot(e.b[0] - e.a[0], e.b[1] - e.a[1]);
+      let segs = [[0, 1]];
+      if (F.g.side === e.side) {
+        const t = (e.side === "gxmin" || e.side === "gxmax")
+          ? (F.g.cy - fy) / fh : (F.g.cx - fx) / fw;
+        const h = GATE_HALF / len;
+        segs = [[0, Math.max(0, t - h)], [Math.min(1, t + h), 1]];
+      }
+      for (const [t0, t1] of segs) {
+        if (t1 <= t0) continue;
+        const A = S(...lerp(e.a, e.b, t0)), B = S(...lerp(e.a, e.b, t1));
+        ctx.strokeStyle = "#9c6f3f"; ctx.lineWidth = th;
+        ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+        ctx.strokeStyle = "#5f4326"; ctx.lineWidth = Math.max(1, th * 0.35);
+        ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+      }
+    }
+    const vertical = (F.g.side === "gxmin" || F.g.side === "gxmax");
+    const along = vertical ? [0, 1] : [1, 0];
+    const eA = [F.g.cx - along[0] * GATE_HALF, F.g.cy - along[1] * GATE_HALF];
+    const eB = [F.g.cx + along[0] * GATE_HALF, F.g.cy + along[1] * GATE_HALF];
+    const post = (p) => {
+      const P = S(p[0], p[1]);
+      ctx.fillStyle = "#6b4a28";
+      ctx.fillRect(P.x - th * 0.9, P.y - th * 0.9, th * 1.8, th * 1.8);
     };
-    const X = gx => w2sX(gx * TILE), Y = gy => w2sY(gy * TILE);
-    // 四边围栏（缺口在门侧，留 GATE_HALF 宽缺口）
-    const gapL = (side) => {
-      if (side === "gymax") return { a: F.g.cx - GATE_HALF, b: F.g.cx + GATE_HALF };
-      if (side === "gymin") return { a: fx + fw * 0.5 - GATE_HALF, b: fx + fw * 0.5 + GATE_HALF };
-      if (side === "gxmax") return { a: F.g.cy - GATE_HALF, b: F.g.cy + GATE_HALF };
-      return { a: fy + fh * 0.5 - GATE_HALF, b: fy + fh * 0.5 + GATE_HALF };
-    };
-    const gA = gapL(F.g.side);
-    // 北缘
-    seg(X(fx), Y(fy) - th / 2, X(fx + fw), Y(fy) + th / 2);
-    // 南缘（门在这侧）
-    if (F.g.side === "gymax") {
-      seg(X(fx), Y(fy + fh) - th / 2, X(gA.a), Y(fy + fh) + th / 2);
-      seg(X(gA.b), Y(fy + fh) - th / 2, X(fx + fw), Y(fy + fh) + th / 2);
-    } else {
-      seg(X(fx), Y(fy + fh) - th / 2, X(fx + fw), Y(fy + fh) + th / 2);
-    }
-    // 西缘
-    if (F.g.side === "gxmin") {
-      seg(X(fx) - th / 2, Y(fy), X(fx) + th / 2, Y(gA.a));
-      seg(X(fx) - th / 2, Y(gA.b), X(fx) + th / 2, Y(fy + fh));
-    } else {
-      seg(X(fx) - th / 2, Y(fy), X(fx) + th / 2, Y(fy + fh));
-    }
-    // 东缘
-    if (F.g.side === "gxmax") {
-      seg(X(fx + fw) - th / 2, Y(fy), X(fx + fw) + th / 2, Y(gA.a));
-      seg(X(fx + fw) - th / 2, Y(gA.b), X(fx + fw) + th / 2, Y(fy + fh));
-    } else {
-      seg(X(fx + fw) - th / 2, Y(fy), X(fx + fw) + th / 2, Y(fy + fh));
-    }
-    // 门柱 + 滑动门板
+    post(eA); post(eB);
     const open = F.open;
-    const py = Y(F.g.cy);
-    const pw = GATE_HALF * TILE * z;
-    ctx.fillStyle = "#6b4a28";
-    ctx.fillRect(X(F.g.cx - GATE_HALF) - th, py - th * 1.4, th * 2, th * 2.8);
-    ctx.fillRect(X(F.g.cx + GATE_HALF) - th, py - th * 1.4, th * 2, th * 2.8);
-    // 两扇门页沿缝隙轴滑开
-    if (F.g.side === "gymax" || F.g.side === "gymin") {
-      const yy = py - th / 2;
-      ctx.fillStyle = "#a67c4c";
-      ctx.fillRect(X(F.g.cx - GATE_HALF) + open * pw, yy, pw, th);
-      ctx.fillRect(X(F.g.cx + GATE_HALF) - open * pw - pw, yy, pw, th);
-    } else {
-      ctx.fillStyle = "#a67c4c";
-      ctx.fillRect(X(F.g.cx) - th / 2, Y(F.g.cy - GATE_HALF) + open * pw, th, pw);
-      ctx.fillRect(X(F.g.cx) - th / 2, Y(F.g.cy + GATE_HALF) - open * pw - pw, th, pw);
-    }
+    const drawDoor = (end, dir) => {
+      const len = GATE_HALF * (1 - open * 0.82);
+      const tip = [end[0] + dir[0] * len, end[1] + dir[1] * len];
+      const A = S(end[0], end[1]), B = S(tip[0], tip[1]);
+      ctx.strokeStyle = "#cfa366"; ctx.lineWidth = th * 0.9;
+      ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+    };
+    drawDoor(eA, along);
+    drawDoor(eB, [-along[0], -along[1]]);
   }
 
   // ---------- 绘制：环境装饰（底边中点锚点，逐项参与深度排序） ----------
@@ -881,9 +938,7 @@
   addDeco("tree_oak_b", 11.0, 222.5); addDeco("tree_oak", 30.5, 222.5);
   // 主路两侧路灯（南北向主路 gx≈62 与 gx≈96）
   for (let gy = 80; gy <= 250; gy += 16) { addDeco("lamp", 60.0, gy); addDeco("lamp", 98.0, gy + 6); }
-  // TEACH-1 南入口花坛+灌木
-  addDeco("flowerbed", 70.0, 221.5); addDeco("flowerbed", 80.0, 221.5);
-  addDeco("shrub_a", 64.0, 220.0); addDeco("shrub_b", 86.0, 220.0);
+  // TEACH-1 双D中轴门洞内的绿地/铺装已在 sprite 内绘制，不再外挂花坛，避免网格错位
   // LIB 门前长椅+灌木
   addDeco("bench", 84.0, 146.5); addDeco("bench", 90.0, 146.5);
   addDeco("shrub_a", 78.0, 146.0); addDeco("shrub_b", 99.0, 146.0);
@@ -903,15 +958,15 @@
 
   // ---------- 绘制：角色 ----------
   function drawPlayer() {
-    const g = worldToGrid(player.wx, player.wy);
-    const sx = w2sX(player.wx), sy = w2sY(player.wy);
+    const g = ({ gx: player.wx, gy: player.wy });
+    const sx = w2sX(isoX(player.wx, player.wy)), sy = w2sY(isoY(player.wx, player.wy));
     const z = view.zoom;
     if (z < 0.12) {
       ctx.fillStyle = player.running ? "#ffd25a" : "#5b4a6b";
       ctx.beginPath(); ctx.arc(sx, sy, player.running ? 4.5 : 3.5, 0, 7); ctx.fill();
       return g.gy * 1000 + g.gx;
     }
-    const fw = FRAME_W * z, fh = FRAME_H * z;
+    const fw = FRAME_W * z * PLAYER_SCALE, fh = FRAME_H * z * PLAYER_SCALE;
     const fset = frames[player.facing] || frames.down;
     const seq = player.moving ? (player.running ? fset.run : fset.walk) : fset.idle;
     const fi = player.moving ? (Math.floor(player.phase) % seq.length) : 0;
@@ -923,7 +978,7 @@
     } else bob = -Math.sin(player.idleT * 1.8) * 1.0 * z;
     // 影子
     ctx.fillStyle = "rgba(20,30,40,.3)";
-    ctx.beginPath(); ctx.ellipse(sx, sy, 9 * z, 3.6 * z, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(sx, sy, 9 * z * PLAYER_SCALE, 3.6 * z * PLAYER_SCALE, 0, 0, 7); ctx.fill();
     if (pimg) {
       ctx.imageSmoothingEnabled = z < 0.85;
       ctx.save();
@@ -951,12 +1006,19 @@
     ctx.font = "600 " + fs + "px 'PingFang SC','Microsoft YaHei',sans-serif";
     const h = fs + 9, padX = 8;
     for (const b of D.buildings) {
-      const meta = TD.sprites && TD.sprites[b.id];
-      const s = buildingScale(b);
-      const an = { x: (b.grid[0] + b.grid[2] / 2) * TILE, y: (b.grid[1] + b.grid[3]) * TILE + (meta ? meta.dy : 0) };
       const real = spriteImgs[b.id];
-      const topY = real ? (an.y - real.height * s) : b.grid[1] * TILE;  // 标签贴放大后 sprite 顶部
-      const lx = w2sX(an.x), ly = w2sY(topY) - 8;
+      let lx, ly;
+      if (real) {
+        const a = spriteAnchor(b, real);
+        const W = a.pxW * z, H = a.pxH * z;
+        lx = w2sX(a.x) + (0.5 - a.ax) * W;
+        ly = w2sY(a.y) - a.ay * H - 8;
+      } else {
+        const r = visRect(b);
+        const cx = r.x + r.w / 2, cy = r.y;
+        lx = w2sX(isoX(cx, cy));
+        ly = w2sY(isoY(cx, cy)) - 12;
+      }
       if (lx < -80 || lx > window.innerWidth + 80 || ly < -30 || ly > window.innerHeight + 30) continue;
       const tw = ctx.measureText(b.name).width;
       ctx.fillStyle = "rgba(15,22,34,.72)";
@@ -968,17 +1030,17 @@
     }
   }
 
-  // ---------- 小地图（方形 top-down） ----------
+  // ---------- 小地图（方形俯视，独立于等距主视图） ----------
   function mmTransform() {
     const pad = 4;
-    const s = Math.min((MM_W - 2 * pad) / WORLD_W, (MM_H - 2 * pad) / WORLD_H);
-    return { s, ox: (MM_W - WORLD_W * s) / 2, oy: (MM_H - WORLD_H * s) / 2 };
+    const s = Math.min((MM_W - 2 * pad) / SQ_W, (MM_H - 2 * pad) / SQ_H);
+    return { s, ox: (MM_W - SQ_W * s) / 2, oy: (MM_H - SQ_H * s) / 2 };
   }
   function drawMinimap() {
     const { s, ox, oy } = mmTransform();
     mmCtx.clearRect(0, 0, MM_W, MM_H);
-    mmCtx.drawImage(groundPre, ox, oy, WORLD_W * s, WORLD_H * s);
-    const w2m = (wx, wy) => ({ x: ox + wx * s, y: oy + wy * s });
+    mmCtx.drawImage(mmGround, ox, oy, SQ_W * s, SQ_H * s);
+    const w2m = (gx, gy) => ({ x: ox + (gx - GX0) * TILE * s, y: oy + (gy - GY0) * TILE * s });
     if (player.navPath && player.navPath.length) {
       const pts = [{ x: player.wx, y: player.wy }, ...player.navPath];
       mmCtx.strokeStyle = "rgba(120,178,255,.95)"; mmCtx.lineWidth = 1.3;
@@ -992,13 +1054,20 @@
     for (const b of D.buildings) {
       const r = visRect(b);
       mmCtx.fillStyle = GROUP_COLOR[b.group] || "#9fb4d8";
-      const p0 = w2m(r.x * TILE, r.y * TILE), p1 = w2m((r.x + r.w) * TILE, (r.y + r.h) * TILE);
+      const p0 = w2m(r.x, r.y), p1 = w2m(r.x + r.w, r.y + r.h);
       mmCtx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
     }
-    const c0 = w2m(s2wX(0), s2wY(0)), c1 = w2m(s2wX(window.innerWidth), s2wY(window.innerHeight));
-    mmCtx.fillStyle = "rgba(255,255,255,.07)";
+    // 视野框：屏幕四角 → 等距世界 → 网格 → 方形小地图包围矩形
+    let gxmin = 1e9, gymin = 1e9, gxmax = -1e9, gymax = -1e9;
+    for (const [cx, cy] of [[0, 0], [window.innerWidth, 0], [0, window.innerHeight], [window.innerWidth, window.innerHeight]]) {
+      const g = worldToGrid(s2wX(cx), s2wY(cy));
+      gxmin = Math.min(gxmin, g.gx); gxmax = Math.max(gxmax, g.gx);
+      gymin = Math.min(gymin, g.gy); gymax = Math.max(gymax, g.gy);
+    }
+    const c0 = w2m(gxmin, gymin), c1 = w2m(gxmax, gymax);
+    mmCtx.fillStyle = "rgba(255,255,255,.08)";
     mmCtx.fillRect(c0.x, c0.y, c1.x - c0.x, c1.y - c0.y);
-    mmCtx.strokeStyle = "rgba(255,255,255,.75)"; mmCtx.lineWidth = 1;
+    mmCtx.strokeStyle = "rgba(255,255,255,.8)"; mmCtx.lineWidth = 1;
     mmCtx.strokeRect(c0.x, c0.y, c1.x - c0.x, c1.y - c0.y);
     const pm = w2m(player.wx, player.wy);
     mmCtx.fillStyle = "#ffd25a";
@@ -1012,10 +1081,10 @@
     const mx = (e.clientX - rect.left) * (MM_W / rect.width);
     const my = (e.clientY - rect.top) * (MM_H / rect.height);
     const { s, ox, oy } = mmTransform();
-    const wx = (mx - ox) / s, wy = (my - oy) / s;
+    const gx = GX0 + (mx - ox) / s / TILE, gy = GY0 + (my - oy) / s / TILE;
     follow = false; updateFollowBtn();
-    view.x = window.innerWidth / 2 - wx * view.zoom;
-    view.y = window.innerHeight / 2 - wy * view.zoom;
+    view.x = window.innerWidth / 2 - isoX(gx, gy) * view.zoom;
+    view.y = window.innerHeight / 2 - isoY(gx, gy) * view.zoom;
   });
 
   // ---------- 主渲染 ----------
@@ -1028,12 +1097,11 @@
     // 深度排序 drawList
     const drawList = [];
     for (const b of D.buildings) {
-      const an = anchorOf(b);
-      drawList.push({ kind: "b", depth: an.y / TILE * 1000 + an.x / TILE, b });
+      drawList.push({ kind: "b", depth: (b.grid[1] + b.grid[3]) * 1000 + (b.grid[0] + b.grid[2]), b });
     }
     for (const F of fences) drawList.push({ kind: "f", depth: F.g.cy * 1000 + F.g.cx, F });
     for (const d of DECOR) drawList.push({ kind: "d", depth: d.gy * 1000 + d.gx, d });
-    const pg = worldToGrid(player.wx, player.wy);
+    const pg = ({ gx: player.wx, gy: player.wy });
     drawList.push({ kind: "p", depth: pg.gy * 1000 + pg.gx });
     drawList.sort((a, b) => a.depth - b.depth);
     for (const it of drawList) {
@@ -1043,7 +1111,42 @@
       else if (it.kind === "p") drawPlayer();
     }
     drawLabels();
+    if (DEBUG_ISO) drawDebug();
     drawMinimap();
+  }
+  // 调试覆盖层：?debug=1 画 footprint 菱形/南角/sprite锚点/道路中线
+  const DEBUG_ISO = new URLSearchParams(location.search).get("debug") === "1";
+  function drawDebug() {
+    for (const b of D.buildings) {
+      const r = visRect(b);
+      const d = isoDiamond(r.x, r.y, r.w, r.h);
+      const P = q => ({ x: w2sX(q.x), y: w2sY(q.y) });
+      const p0 = P(d[0]), p1 = P(d[1]), p2 = P(d[2]), p3 = P(d[3]);
+      ctx.strokeStyle = b.walkable ? "rgba(0,180,255,.9)" : "rgba(255,40,40,.85)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
+      ctx.closePath(); ctx.stroke();
+      ctx.fillStyle = "#ffe21a"; ctx.beginPath(); ctx.arc(p2.x, p2.y, 3, 0, 7); ctx.fill();
+      if (spriteImgs[b.id]) {
+        const a = spriteAnchor(b, spriteImgs[b.id]);
+        const ax = w2sX(a.x), ayy = w2sY(a.y), Ww = a.pxW * view.zoom;
+        ctx.fillStyle = "#25f0ff"; ctx.beginPath();
+        ctx.arc(ax, ayy, 3, 0, 7); ctx.fill();
+        ctx.strokeStyle = "rgba(37,240,255,.75)"; ctx.setLineDash([6, 4]); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(ax - Ww / 2, ayy); ctx.lineTo(ax + Ww / 2, ayy); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+    ctx.strokeStyle = "rgba(30,60,255,.7)"; ctx.lineWidth = 1.2;
+    for (const r of TD.roads) {
+      ctx.beginPath();
+      r.gpts.forEach((p, i) => {
+        const x = w2sX(isoX(p[0], p[1])), y = w2sY(isoY(p[0], p[1]));
+        if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      });
+      ctx.stroke();
+    }
   }
 
   let last = performance.now();
@@ -1052,8 +1155,8 @@
     updatePlayer(dt);
     updateGates(dt);
     if (follow) {
-      view.x += window.innerWidth * 0.5 - w2sX(player.wx);
-      view.y += window.innerHeight * 0.62 - w2sY(player.wy);
+      view.x += window.innerWidth * 0.5 - w2sX(isoX(player.wx, player.wy));
+      view.y += window.innerHeight * 0.62 - w2sY(isoY(player.wx, player.wy));
     }
     render();
     requestAnimationFrame(frame);
