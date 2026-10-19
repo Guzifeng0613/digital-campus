@@ -316,14 +316,25 @@
     if (pe) pe.textContent = pct + "%";
     if (pf) pf.style.width = pct + "%";
   }
-  function loadImg(src) {
+  // 带重试的图片加载：线上 CDN 偶发慢/超时会导致建筑永久缺失，失败后递增延时重试
+  function loadImageRetry(src, tries) {
+    tries = tries || 3;
     return new Promise(res => {
-      const im = new Image();
-      im.onload = () => { tick(); res(im); };
-      im.onerror = () => { tick(); res(null); };
-      im.src = src;
+      let n = 0;
+      const attempt = () => {
+        const im = new Image();
+        im.onload = () => { tick(); res(im); };
+        im.onerror = () => {
+          n++;
+          if (n < tries) setTimeout(attempt, 500 * n);
+          else { tick(); res(null); }
+        };
+        im.src = src + (n ? (src.indexOf("?") >= 0 ? "&r=" : "?r=") + n : "");
+      };
+      attempt();
     });
   }
+  function loadImg(src) { return loadImageRetry(src); }
   const spriteImgs = {};
   const SPRITE_IDS = ["TEACH-1", "TEACH-2", "LIB", "WENLI", "LAB-TECH", "ACT",
     "CAN-YULAN", "CAN-ZIZHU", "ENG-TRAIN", "GYM", "FIELD-W", "FIELD-N",
@@ -345,12 +356,7 @@
   const PLAYER_DIRS = ["down", "up", "left", "right"];
   const frames = {};   // frames[dir][kind] = [img...]  kind: walk/run/idle
   function loadFrame(dir, kind, f) {
-    return new Promise(res => {
-      const im = new Image();
-      im.onload = () => { tick(); res(im); };
-      im.onerror = () => { tick(); res(null); };
-      im.src = "img/topdown/player/" + dir + "_" + kind + (f === null ? "" : "_" + f) + ".png";
-    });
+    return loadImageRetry("img/topdown/player/" + dir + "_" + kind + (f === null ? "" : "_" + f) + ".png");
   }
   const playerLoad = Promise.all(PLAYER_DIRS.map(dir =>
     Promise.all([
