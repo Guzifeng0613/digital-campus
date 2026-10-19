@@ -306,11 +306,21 @@
   }
 
   // ---------- 资产加载（16 栋 sprite / C 批 tiles+decor / D 批角色帧） ----------
+  const TOTAL_ASSETS = 16 + 10 + 14 + 4 * 9;   // sprite + tiles + decor + 角色帧
+  let loadedN = 0;
+  function tick() {
+    loadedN++;
+    const pct = Math.min(100, Math.round(loadedN / TOTAL_ASSETS * 100));
+    const pe = document.getElementById("pct");
+    const pf = document.getElementById("pfill");
+    if (pe) pe.textContent = pct + "%";
+    if (pf) pf.style.width = pct + "%";
+  }
   function loadImg(src) {
     return new Promise(res => {
       const im = new Image();
-      im.onload = () => res(im);
-      im.onerror = () => res(null);
+      im.onload = () => { tick(); res(im); };
+      im.onerror = () => { tick(); res(null); };
       im.src = src;
     });
   }
@@ -337,7 +347,8 @@
   function loadFrame(dir, kind, f) {
     return new Promise(res => {
       const im = new Image();
-      im.onload = () => res(im); im.onerror = () => res(null);
+      im.onload = () => { tick(); res(im); };
+      im.onerror = () => { tick(); res(null); };
       im.src = "img/topdown/player/" + dir + "_" + kind + (f === null ? "" : "_" + f) + ".png";
     });
   }
@@ -1226,7 +1237,13 @@
   centerView();
   updateFollowBtn(); updateRunBtn();
   Promise.all([BOOT, playerLoad]).then(() => {
-    document.getElementById("loading").style.display = "none";
+    loadedN = TOTAL_ASSETS;
+    const pe = document.getElementById("pct"), pf = document.getElementById("pfill");
+    if (pe) pe.textContent = "100%";
+    if (pf) pf.style.width = "100%";
+    const ld = document.getElementById("loading");
+    if (ld) ld.style.opacity = "0";
+    setTimeout(() => { if (ld) ld.style.display = "none"; }, 320);
     requestAnimationFrame(frame);
   });
 })();
