@@ -1,4 +1,4 @@
-// 自动生成：等距地图数据（地面底图 + 建筑放置/投影/信息）。勿手改。
+// 自动生成：等距地图数据（地面底图 + 建筑放置/投影/信息）。按高德卫星图重标定（2026-10-19）。勿手改。
 window.CAMPUS_DATA = {
  "meta": {
   "project": "北京化工大学昌平校区 · 等距像素数字校园",
@@ -21,7 +21,11 @@ window.CAMPUS_DATA = {
    22.0,
    11.0
   ],
-  "gridRange": [6.0, 6.0, 150.0, 280.0
+  "gridRange": [
+   0.0,
+   4.0,
+   160.0,
+   266.0
   ],
   "count": 16
  },
@@ -34,7 +38,10 @@ window.CAMPUS_DATA = {
    "cat": "field",
    "img": "img/sprites/FIELD-W.png",
    "grid": [
-    7.00, 201.61, 26.79, 39.19
+    12.6,
+    201.3,
+    28.0,
+    28.0
    ],
    "bbox": [
     0,
@@ -71,7 +78,10 @@ window.CAMPUS_DATA = {
    "cat": "gym",
    "img": "img/sprites/GYM.png",
    "grid": [
-    40.32, 231.01, 38.51, 27.29
+    56.7,
+    230.3,
+    23.8,
+    22.4
    ],
    "bbox": [
     44,
@@ -108,7 +118,10 @@ window.CAMPUS_DATA = {
    "cat": "teaching",
    "img": "img/sprites/TEACH-1.png",
    "grid": [
-    74.65, 205.55, 40.19, 20.83
+    76.3,
+    182.7,
+    43.4,
+    35.0
    ],
    "bbox": [
     20,
@@ -145,7 +158,10 @@ window.CAMPUS_DATA = {
    "cat": "lab",
    "img": "img/sprites/LAB-TECH.png",
    "grid": [
-    88.79, 177.19, 35.36, 28.55
+    95.9,
+    168.7,
+    33.6,
+    29.4
    ],
    "bbox": [
     0,
@@ -182,7 +198,10 @@ window.CAMPUS_DATA = {
    "cat": "gate",
    "img": "img/sprites/GATE-S.png",
    "grid": [
-    74.32, 266.70, 15.40, 9.10
+    79.1,
+    252.0,
+    11.2,
+    8.4
    ],
    "bbox": [
     64,
@@ -219,7 +238,10 @@ window.CAMPUS_DATA = {
    "cat": "gate",
    "img": "img/sprites/GATE-E.png",
    "grid": [
-    141.30, 161.72, 7.37, 10.50
+    149.8,
+    154.7,
+    6.3,
+    7.7
    ],
    "bbox": [
     56,
@@ -256,7 +278,10 @@ window.CAMPUS_DATA = {
    "cat": "library",
    "img": "img/sprites/LIB.png",
    "grid": [
-    87.96, 134.62, 23.63, 19.20
+    79.1,
+    132.3,
+    17.5,
+    17.5
    ],
    "bbox": [
     0,
@@ -293,7 +318,10 @@ window.CAMPUS_DATA = {
    "cat": "college",
    "img": "img/sprites/WENLI.png",
    "grid": [
-    110.82, 145.97, 20.09, 21.00
+    111.3,
+    137.9,
+    20.3,
+    14.7
    ],
    "bbox": [
     88,
@@ -330,7 +358,10 @@ window.CAMPUS_DATA = {
    "cat": "teaching",
    "img": "img/sprites/TEACH-2.png",
    "grid": [
-    71.98, 111.47, 32.15, 23.52
+    65.1,
+    106.4,
+    25.2,
+    19.6
    ],
    "bbox": [
     8,
@@ -367,7 +398,10 @@ window.CAMPUS_DATA = {
    "cat": "activity",
    "img": "img/sprites/ACT.png",
    "grid": [
-    42.40, 116.05, 22.97, 16.46
+    38.5,
+    114.1,
+    30.1,
+    18.2
    ],
    "bbox": [
     48,
@@ -404,7 +438,10 @@ window.CAMPUS_DATA = {
    "cat": "canteen",
    "img": "img/sprites/CAN-YULAN.png",
    "grid": [
-    44.84, 100.13, 16.07, 14.70
+    38.5,
+    98.0,
+    21.0,
+    13.3
    ],
    "bbox": [
     116,
@@ -441,7 +478,10 @@ window.CAMPUS_DATA = {
    "cat": "canteen",
    "img": "img/sprites/CAN-ZIZHU.png",
    "grid": [
-    19.06, 138.62, 14.07, 21.70
+    34.3,
+    135.1,
+    16.1,
+    13.3
    ],
    "bbox": [
     0,
@@ -478,7 +518,10 @@ window.CAMPUS_DATA = {
    "cat": "service",
    "img": "img/sprites/ENG-TRAIN.png",
    "grid": [
-    103.95, 81.23, 25.12, 14.00
+    100.1,
+    69.3,
+    16.8,
+    19.6
    ],
    "bbox": [
     44,
@@ -515,7 +558,10 @@ window.CAMPUS_DATA = {
    "cat": "field",
    "img": "img/sprites/FIELD-N.png",
    "grid": [
-    94.75, 29.44, 16.74, 26.60
+    91.4,
+    25.0,
+    30.0,
+    30.0
    ],
    "bbox": [
     56,
@@ -552,7 +598,10 @@ window.CAMPUS_DATA = {
    "cat": "nature",
    "img": "img/sprites/MOUNT-YUPING.png",
    "grid": [
-    35.01, 10.87, 52.51, 30.86
+    11.9,
+    6.3,
+    67.2,
+    46.2
    ],
    "bbox": [
     0,
@@ -589,7 +638,10 @@ window.CAMPUS_DATA = {
    "cat": "gate",
    "img": "img/sprites/GATE-W.png",
    "grid": [
-    7.67, 151.22, 6.70, 10.50
+    2.1,
+    137.9,
+    5.6,
+    8.4
    ],
    "bbox": [
     48,
