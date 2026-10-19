@@ -48,7 +48,9 @@
   function centerView() {
     view.zoom = fitZoom();
     view.x = window.innerWidth / 2 - WORLD_CX * view.zoom;
-    view.y = window.innerHeight * 0.62 - WORLD_CY * view.zoom;
+    // 竖屏（手机）等距菱形按宽铺满后上下留白，垂直居中；横屏/桌面偏下 0.62 视觉居中
+    const portrait = window.innerHeight > window.innerWidth;
+    view.y = window.innerHeight * (portrait ? 0.5 : 0.62) - WORLD_CY * view.zoom;
   }
   const w2sX = wx => wx * view.zoom + view.x;
   const w2sY = wy => wy * view.zoom + view.y;
@@ -89,14 +91,14 @@
   // 每栋南角在图像中的归一化锚点：ax=水平中心（南角），ay=主体南墙根所在高度（避开南伸台阶）。
   // ay = 南墙根/场地南缘（地面接地点）在图像高度的归一化位置，锚到 footprint 南角。
   const ANCHOR_AY = {
-    "FIELD-W": 0.98, "GYM": 0.99, "TEACH-1": 0.99, "LAB-TECH": 0.98, "GATE-S": 0.97,
+    "FIELD-W": 0.70, "GYM": 0.99, "TEACH-1": 0.99, "LAB-TECH": 0.98, "GATE-S": 0.97,
     "GATE-E": 0.92, "LIB": 0.99, "WENLI": 0.95, "TEACH-2": 0.97, "ACT": 0.85,
     "CAN-YULAN": 1.0, "CAN-ZIZHU": 0.94, "ENG-TRAIN": 0.96, "FIELD-N": 0.98,
     "MOUNT-YUPING": 1.0, "GATE-W": 0.81
   };
   // ax = 南角（最近角，南墙↔东墙交汇）在图像宽度的归一化位置；标准等距矩形=fw/(fw+fh)，异形/台阶楼目视微调
   const ANCHOR_AX = {
-    "FIELD-W": 0.36, "GYM": 0.50, "TEACH-1": 0.68, "LAB-TECH": 0.51, "GATE-S": 0.71,
+    "FIELD-W": 0.42, "GYM": 0.50, "TEACH-1": 0.68, "LAB-TECH": 0.51, "GATE-S": 0.71,
     "GATE-E": 0.35, "LIB": 0.57, "WENLI": 0.47, "TEACH-2": 0.53, "ACT": 0.60,
     "CAN-YULAN": 0.46, "CAN-ZIZHU": 0.41, "ENG-TRAIN": 0.48, "FIELD-N": 0.33,
     "MOUNT-YUPING": 0.64, "GATE-W": 0.33
@@ -109,7 +111,8 @@
   }; // 大组合保持1.0，单栋小楼放大饱满
   function spriteIsoScale(b, real) {
     const [, , fw, fh] = b.grid;
-    const k = ISO_K[b.id] != null ? ISO_K[b.id] : 1.1;
+    const ov = window.__anchorOverride && window.__anchorOverride[b.id];
+    const k = ov && ov.k != null ? ov.k : (ISO_K[b.id] != null ? ISO_K[b.id] : 1.1);
     return (fw + fh) * TW / 2 * k / real.width;
   }
   // 返回南角世界坐标、归一化锚点、图像缩放后的世界宽高
@@ -117,8 +120,9 @@
     const [fx, fy, fw, fh] = b.grid;
     const sc = spriteIsoScale(b, real);
     const south = isoDiamond(fx, fy, fw, fh)[2];
-    const ax = ANCHOR_AX[b.id] != null ? ANCHOR_AX[b.id] : 0.5;
-    const ay = ANCHOR_AY[b.id] != null ? ANCHOR_AY[b.id] : 0.95;
+    const ov = window.__anchorOverride && window.__anchorOverride[b.id];
+    const ax = ov && ov.ax != null ? ov.ax : (ANCHOR_AX[b.id] != null ? ANCHOR_AX[b.id] : 0.5);
+    const ay = ov && ov.ay != null ? ov.ay : (ANCHOR_AY[b.id] != null ? ANCHOR_AY[b.id] : 0.95);
     return { x: south.x, y: south.y, ax, ay, pxW: real.width * sc, pxH: real.height * sc, sc };
   }
 
@@ -522,6 +526,19 @@
   }
   function navigateToBuilding(b) {
     const pg = ({ gx: player.wx, gy: player.wy });
+    // 有围栏的场地：BFS 从唯一门缺口进入，目标设为门内点（场内），走近时门自动开合
+    const F = fences.find(f => f.id === b.id);
+    if (F) {
+      const g = F.g, D = 6;
+      let tx = g.cx, ty = g.cy;
+      if (g.side === "gymax") ty -= D;
+      else if (g.side === "gymin") ty += D;
+      else if (g.side === "gxmax") tx -= D;
+      else if (g.side === "gxmin") tx += D;
+      const t = nearestOpen(tx, ty);
+      const p = t ? bfs(pg, t) : null;
+      if (p) { startNav(p, b.name); return; }
+    }
     const spots = openSpotsAround(b).slice(0, 12);
     let best = null, bestLen = Infinity;
     for (const s of spots) {
@@ -781,7 +798,31 @@
     select: b => showInfo(b),
     gotoBuilding: id => { const b = D.buildings.find(x => x.id === id); if (b) navigateToBuilding(b); },
     gotoPoint: (gx, gy) => navigateToPoint(gx, gy),
-    dbg: { blockedAt, bfs, nearestOpen, openSpotsAround, fences, buildingScale, visRect, clickRect }
+    dbg: {
+      blockedAt, bfs, nearestOpen, openSpotsAround, fences, buildingScale, visRect, clickRect,
+      spriteGeometry(id, px, py) {
+        const b = D.buildings.find(x => x.id === id);
+        const real = spriteImgs[id];
+        const a = spriteAnchor(b, real);
+        const z = view.zoom;
+        const W = a.pxW * z, H = a.pxH * z;
+        const dx = w2sX(a.x) - a.ax * W, dy = w2sY(a.y) - a.ay * H;
+        const d = isoDiamond(b.grid[0], b.grid[1], b.grid[2], b.grid[3]);
+        const S = q => ({ x: +w2sX(q.x).toFixed(1), y: +w2sY(q.y).toFixed(1) });
+        const out = {
+          imgSize: [real.width, real.height], sc: +a.sc.toFixed(4),
+          anchor: { ax: a.ax, ay: a.ay, k: (window.__anchorOverride && window.__anchorOverride[id] && window.__anchorOverride[id].k) || ISO_K[id] || 1.1 },
+          screenSouth: S(isoDiamond(b.grid[0], b.grid[1], b.grid[2], b.grid[3])[2]),
+          P0: S(d[0]), P1: S(d[1]), P2: S(d[2]), P3: S(d[3]),
+          spriteTL: { x: +dx.toFixed(1), y: +dy.toFixed(1) },
+          spriteSize: { w: +W.toFixed(1), h: +H.toFixed(1) }
+        };
+        if (px != null && py != null) {
+          out.pxPoint = { x: +(dx + px / real.width * W).toFixed(1), y: +(dy + py / real.height * H).toFixed(1) };
+        }
+        return out;
+      }
+    }
   };
 
   // ---------- 绘制：等距地面 ----------
@@ -841,6 +882,16 @@
       ctx.imageSmoothingEnabled = false;   // NEAREST 硬像素
       ctx.drawImage(real, dx, dy, W, H);
       ctx.imageSmoothingEnabled = true;
+      if (window.__dbgAnchor === b.id) {
+        const d = isoDiamond(fx, fy, fw, fh);
+        ctx.strokeStyle = "#ff2a2a"; ctx.lineWidth = 3;
+        ctx.beginPath();
+        d.forEach((q, i) => { const sx = w2sX(q.x), sy = w2sY(q.y); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); });
+        ctx.closePath(); ctx.stroke();
+        ctx.strokeStyle = "#22ff66"; ctx.lineWidth = 2; ctx.strokeRect(dx, dy, W, H);
+        ctx.fillStyle = "#ff2a2a"; ctx.beginPath();
+        ctx.arc(w2sX(a.x), w2sY(a.y), 7, 0, Math.PI * 2); ctx.fill();
+      }
       return;
     }
     // 占位等距方块：顶面菱形 + 南墙/东墙立面

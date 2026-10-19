@@ -52,7 +52,7 @@
     position:fixed; z-index:20; right:16px; top:70px; width:300px; max-width:calc(100vw - 32px);
     border-radius:14px; overflow:hidden; background:rgba(18,26,38,.93); backdrop-filter:blur(8px);
     border:1px solid rgba(120,170,255,.3); box-shadow:0 12px 40px rgba(0,0,0,.5);
-    transform:translateX(340px); transition:transform .28s cubic-bezier(.2,.8,.2,1);
+    transform:translateX(calc(100% + 40px)); transition:transform .28s cubic-bezier(.2,.8,.2,1);
   }
   #info.show { transform:translateX(0); }
   #info .head { padding:14px 16px; background:linear-gradient(135deg,#2d6cdf,#1d4a9e); }
@@ -138,6 +138,16 @@
     #minimap { width:128px; height:68px; }
     #info { width:calc(100vw - 20px); }
     #helpMobile { font-size:10px; padding:5px 10px; }
+  }
+  /* 窄屏手机竖屏：标题独占一行，三按钮换到第二行，避免与标题重叠 */
+  @media (max-width: 560px) and (orientation: portrait) {
+    #title { top:8px; left:10px; padding:7px 10px; }
+    #title h1 { font-size:13px; }
+    #title .sub { display:none; }
+    #btns { top:42px; right:10px; gap:6px; flex-wrap:nowrap; }
+    .btn { padding:6px 10px; font-size:11px; border-radius:9px; white-space:nowrap; }
+    #helpMobile { top:84px; }
+    #info { top:86px; }
   }
   /* 手机横屏：高度紧张，压缩小地图/信息卡/摇杆 */
   @media (pointer: coarse) and (max-height: 480px) and (orientation: landscape) {
