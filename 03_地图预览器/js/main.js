@@ -91,16 +91,16 @@
   // 每栋南角在图像中的归一化锚点：ax=水平中心（南角），ay=主体南墙根所在高度（避开南伸台阶）。
   // ay = 南墙根/场地南缘（地面接地点）在图像高度的归一化位置，锚到 footprint 南角。
   const ANCHOR_AY = {
-    "FIELD-W": 0.70, "GYM": 0.99, "TEACH-1": 0.99, "LAB-TECH": 0.98, "GATE-S": 0.97,
+    "FIELD-W": 0.67, "GYM": 0.99, "TEACH-1": 0.99, "LAB-TECH": 0.98, "GATE-S": 0.97,
     "GATE-E": 0.92, "LIB": 0.99, "WENLI": 0.95, "TEACH-2": 0.97, "ACT": 0.85,
-    "CAN-YULAN": 1.0, "CAN-ZIZHU": 0.94, "ENG-TRAIN": 0.96, "FIELD-N": 0.98,
+    "CAN-YULAN": 1.0, "CAN-ZIZHU": 0.94, "ENG-TRAIN": 0.96, "FIELD-N": 0.896,
     "MOUNT-YUPING": 1.0, "GATE-W": 0.81
   };
   // ax = 南角（最近角，南墙↔东墙交汇）在图像宽度的归一化位置；标准等距矩形=fw/(fw+fh)，异形/台阶楼目视微调
   const ANCHOR_AX = {
-    "FIELD-W": 0.42, "GYM": 0.50, "TEACH-1": 0.68, "LAB-TECH": 0.51, "GATE-S": 0.71,
+    "FIELD-W": 0.56, "GYM": 0.50, "TEACH-1": 0.68, "LAB-TECH": 0.51, "GATE-S": 0.71,
     "GATE-E": 0.35, "LIB": 0.57, "WENLI": 0.47, "TEACH-2": 0.53, "ACT": 0.60,
-    "CAN-YULAN": 0.46, "CAN-ZIZHU": 0.41, "ENG-TRAIN": 0.48, "FIELD-N": 0.33,
+    "CAN-YULAN": 0.46, "CAN-ZIZHU": 0.41, "ENG-TRAIN": 0.48, "FIELD-N": 0.523,
     "MOUNT-YUPING": 0.64, "GATE-W": 0.33
   };
   const ISO_K = {
@@ -400,40 +400,63 @@
   // ---------- 场地围栏 + 唯一入口（网格坐标，与投影无关） ----------
   const FENCE_WALL = 1.0, GATE_HALF = 3.3;
   const FIELDS = [
-    { id: "FIELD-N", gateSide: "gymax", gateT: 0.52, zone: "北操场" },
-    { id: "FIELD-W", gateSide: "gxmax", gateT: 0.5, zone: "风雨操场" }
+    { id: "FIELD-N", gateSide: "gymax", gateT: 0.52, zone: "北操场", sRx: 878, sRy: 560, sAng: 0 },
+    { id: "FIELD-W", gateSide: "gxmax", gateT: 0.5, zone: "风雨操场", fR: 16.5, fdy: -3 }
   ];
+  const GATE_ANG = { gxmax: 0, gymax: Math.PI / 2, gxmin: Math.PI, gymin: -Math.PI / 2 };
   const fences = FIELDS.map(cfg => {
     const b = D.buildings.find(x => x.id === cfg.id);
     const r = visRect(b);            // 围栏随放大后场地
     const fx = r.x, fy = r.y, fw = r.w, fh = r.h;
-    let cx, cy;
-    if (cfg.gateSide === "gxmin" || cfg.gateSide === "gxmax") {
-      cx = cfg.gateSide === "gxmin" ? fx : fx + fw; cy = fy + fh * cfg.gateT;
+    const ccx = fx + fw / 2 + (cfg.fdx || 0), ccy = fy + fh / 2 + (cfg.fdy || 0);
+    const R = (cfg.fR || Math.min(fw, fh) / 2);    // 逻辑圆半径（回退/碰撞）
+    const ang = GATE_ANG[cfg.gateSide];
+    const useScreen = cfg.sRx && cfg.sRy;
+    const sAng = cfg.sAng || 0;
+    const phi = Math.atan2(Math.sin(ang) * 16, Math.cos(ang) * 32);   // 门的屏幕方向
+    let gcx, gcy, gapHalf;
+    if (useScreen) {
+      const aG = phi - sAng, cosA = Math.cos(sAng), sinA = Math.sin(sAng);
+      const ex = cfg.sRx * Math.cos(aG), ey = cfg.sRy * Math.sin(aG);
+      const csx = (ccx - ccy) * 32, csy = (ccx + ccy) * 16;
+      const msx = csx + ex * cosA - ey * sinA, msy = csy + ex * sinA + ey * cosA;
+      gcx = (msx / 32 + msy / 16) / 2; gcy = (msy / 16 - msx / 32) / 2;
+      const gR = Math.hypot(ex, ey);
+      gapHalf = Math.max(0.16, (GATE_HALF * 22) / gR);
     } else {
-      cx = fx + fw * cfg.gateT; cy = cfg.gateSide === "gymin" ? fy : fy + fh;
+      gcx = ccx + R * Math.cos(ang); gcy = ccy + R * Math.sin(ang);
+      gapHalf = Math.asin(Math.min(0.98, GATE_HALF / R));
     }
-    return { id: cfg.id, b, rect: [fx, fy, fw, fh], zone: cfg.zone, g: { side: cfg.gateSide, cx, cy }, open: 0, inside: false };
+    return { id: cfg.id, b, rect: [fx, fy, fw, fh], ccx, ccy, R, zone: cfg.zone,
+      sRx: cfg.sRx, sRy: cfg.sRy, sAng, phi, gapHalf,
+      g: { side: cfg.gateSide, ang, cx: gcx, cy: gcy, dx: Math.cos(ang), dy: Math.sin(ang) }, open: 0, inside: false };
   });
-  function inGap(cx, cy, g) {
-    if (g.side === "gxmin" || g.side === "gxmax")
-      return Math.abs(cx - g.cx) < FENCE_WALL + 0.5 && cy > g.cy - GATE_HALF && cy < g.cy + GATE_HALF;
-    return Math.abs(cy - g.cy) < FENCE_WALL + 0.5 && cx > g.cx - GATE_HALF && cx < g.cx + GATE_HALF;
+  // 屏幕椭圆归一化：返回 d（边界=1）与椭圆参数角 alpha
+  function ellNorm(F, gx, gy) {
+    const sAng = F.sAng || 0, cosA = Math.cos(sAng), sinA = Math.sin(sAng);
+    const dx = (gx - gy) * 32 - (F.ccx - F.ccy) * 32, dy = (gx + gy) * 16 - (F.ccx + F.ccy) * 16;
+    const lx = dx * cosA + dy * sinA, ly = -dx * sinA + dy * cosA;
+    return { d: Math.hypot(lx / F.sRx, ly / F.sRy), alpha: Math.atan2(ly / F.sRy, lx / F.sRx) };
+  }
+  function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
+  function inGap(gx, gy, F) {
+    return Math.hypot(gx - F.g.cx, gy - F.g.cy) < GATE_HALF + 0.6;
   }
   function fenceBlocked(gx, gy, F) {
-    const [fx, fy, fw, fh] = F.rect, w = FENCE_WALL;
-    if (gx < fx - w || gx > fx + fw + w || gy < fy - w || gy > fy + fh + w) return false;
-    if (gx > fx + w && gx < fx + fw - w && gy > fy + w && gy < fy + fh - w) return false;
-    let on = false;
-    if (Math.abs(gx - fx) < w && gy > fy && gy < fy + fh) on = true;
-    if (Math.abs(gx - (fx + fw)) < w && gy > fy && gy < fy + fh) on = true;
-    if (Math.abs(gy - fy) < w && gx > fx && gx < fx + fw) on = true;
-    if (Math.abs(gy - (fy + fh)) < w && gx > fx && gx < fx + fw) on = true;
-    return on && !inGap(gx, gy, F.g);
+    if (F.sRx && F.sRy) {
+      const { d, alpha } = ellNorm(F, gx, gy);
+      if (d > 1.07 || d < 0.93) return false;
+      if (Math.abs(angDiff(alpha, F.phi - F.sAng)) < F.gapHalf) return false;
+      return true;
+    }
+    const w = FENCE_WALL;
+    const d = Math.hypot(gx - F.ccx, gy - F.ccy);
+    if (d > F.R + w || d < F.R - w) return false;
+    return !inGap(gx, gy, F);
   }
   function insideField(gx, gy, F) {
-    const [fx, fy, fw, fh] = F.rect;
-    return gx > fx && gx < fx + fw && gy > fy && gy < fy + fh;
+    if (F.sRx && F.sRy) return ellNorm(F, gx, gy).d < 0.92;
+    return Math.hypot(gx - F.ccx, gy - F.ccy) < F.R - 0.6;
   }
   // ---------- 东西校门伸缩门（闭合阻挡 / 接近收拢放行） ----------
   const campusGates = ["GATE-E", "GATE-W"].map(id => {
@@ -489,6 +512,30 @@
     path.reverse();
     return path;
   }
+  function fieldContaining(gx, gy) {
+    for (const F of fences) if (insideField(gx, gy, F)) return F;
+    return null;
+  }
+  // 穿门寻路：起点/终点若在围栏场地内，强制路径经过精确门点（避免偶数网格从缺口旁擦过）
+  function bfsToTarget(sg, tg) {
+    const sF = fieldContaining(sg.gx, sg.gy), tF = fieldContaining(tg.gx, tg.gy);
+    if (!sF && !tF) return bfs(sg, tg);
+    const F = tF || sF, g = F.g;
+    const dgx = g.cx - F.ccx, dgy = g.cy - F.ccy, gl = Math.hypot(dgx, dgy) || 1;
+    const ux = dgx / gl, uy = dgy / gl, off = 2.6;
+    const outE = { gx: Math.round((g.cx + ux * off) / 2) * 2, gy: Math.round((g.cy + uy * off) / 2) * 2 };
+    const innE = { gx: Math.round((g.cx - ux * off) / 2) * 2, gy: Math.round((g.cy - uy * off) / 2) * 2 };
+    const gate = [g.cx, g.cy];
+    if (tF) {
+      const p1 = bfs(sg, outE), p2 = bfs(innE, tg);
+      if (!p1 || !p2) return null;
+      return [...p1, gate, ...p2.slice(1)];
+    } else {
+      const p1 = bfs(sg, innE), p2 = bfs(outE, tg);
+      if (!p1 || !p2) return null;
+      return [...p1, gate, ...p2.slice(1)];
+    }
+  }
   function nearestOpen(gx, gy) {
     const pg = { gx: player.wx, gy: player.wy };
     if (!navBlocked(gx, gy)) return { gx, gy };
@@ -539,7 +586,7 @@
   function navigateToPoint(gx, gy) {
     const t = nearestOpen(gx, gy);
     if (!t) { setNavTip("无法到达那里", true); return; }
-    startNav(bfs(({ gx: player.wx, gy: player.wy }), t));
+    startNav(bfsToTarget({ gx: player.wx, gy: player.wy }, t));
   }
   function navigateToBuilding(b) {
     const pg = ({ gx: player.wx, gy: player.wy });
@@ -553,7 +600,7 @@
       else if (g.side === "gxmax") tx -= D;
       else if (g.side === "gxmin") tx += D;
       const t = nearestOpen(tx, ty);
-      const p = t ? bfs(pg, t) : null;
+      const p = t ? bfsToTarget(pg, t) : null;
       if (p) { startNav(p, b.name); return; }
     }
     const spots = openSpotsAround(b).slice(0, 12);
@@ -892,6 +939,7 @@
     const z = view.zoom;
     const real = spriteImgs[b.id];
     if (real) {
+      const [fx, fy, fw, fh] = b.grid;
       const a = spriteAnchor(b, real);
       const W = a.pxW * z, H = a.pxH * z;
       const dx = w2sX(a.x) - a.ax * W;
@@ -937,58 +985,53 @@
   }
 
   // ---------- 绘制：等距菱形围栏 + 唯一入口滑门 ----------
-  function drawFences(F) {
+function drawFences(F) {
     const z = view.zoom;
     if (z < 0.1) return;
-    const [fx, fy, fw, fh] = F.rect;
     const th = Math.max(2, 6 * z);
     const S = (gx, gy) => ({ x: w2sX(isoX(gx, gy)), y: w2sY(isoY(gx, gy)) });
-    const edges = [
-      { a: [fx, fy], b: [fx + fw, fy], side: "gymin" },
-      { a: [fx + fw, fy], b: [fx + fw, fy + fh], side: "gxmax" },
-      { a: [fx, fy + fh], b: [fx + fw, fy + fh], side: "gymax" },
-      { a: [fx, fy], b: [fx, fy + fh], side: "gxmin" }
-    ];
-    const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-    ctx.lineCap = "round";
-    for (const e of edges) {
-      const len = Math.hypot(e.b[0] - e.a[0], e.b[1] - e.a[1]);
-      let segs = [[0, 1]];
-      if (F.g.side === e.side) {
-        const t = (e.side === "gxmin" || e.side === "gxmax")
-          ? (F.g.cy - fy) / fh : (F.g.cx - fx) / fw;
-        const h = GATE_HALF / len;
-        segs = [[0, Math.max(0, t - h)], [Math.min(1, t + h), 1]];
+    const C = S(F.ccx, F.ccy);
+    const sAng = F.sAng || 0;
+    const useScreen = F.sRx && F.sRy;
+    const cosA = Math.cos(sAng), sinA = Math.sin(sAng);
+    const phi = F.phi;
+    const ellPt = (a) => {
+      if (useScreen) {
+        const la = a - sAng, lx = Math.cos(la), ly = Math.sin(la);
+        const t = 1 / Math.sqrt((lx * lx) / (F.sRx * F.sRx) + (ly * ly) / (F.sRy * F.sRy));
+        const ex = t * Math.cos(a), ey = t * Math.sin(a);
+        return { x: C.x + (ex * cosA - ey * sinA) * z, y: C.y + (ex * sinA + ey * cosA) * z };
       }
-      for (const [t0, t1] of segs) {
-        if (t1 <= t0) continue;
-        const A = S(...lerp(e.a, e.b, t0)), B = S(...lerp(e.a, e.b, t1));
-        ctx.strokeStyle = "#9c6f3f"; ctx.lineWidth = th;
-        ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
-        ctx.strokeStyle = "#5f4326"; ctx.lineWidth = Math.max(1, th * 0.35);
-        ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
-      }
-    }
-    const vertical = (F.g.side === "gxmin" || F.g.side === "gxmax");
-    const along = vertical ? [0, 1] : [1, 0];
-    const eA = [F.g.cx - along[0] * GATE_HALF, F.g.cy - along[1] * GATE_HALF];
-    const eB = [F.g.cx + along[0] * GATE_HALF, F.g.cy + along[1] * GATE_HALF];
-    const post = (p) => {
-      const P = S(p[0], p[1]);
-      ctx.fillStyle = "#6b4a28";
-      ctx.fillRect(P.x - th * 0.9, P.y - th * 0.9, th * 1.8, th * 1.8);
+      return S(F.ccx + F.R * Math.cos(a), F.ccy + F.R * Math.sin(a));
     };
-    post(eA); post(eB);
+    const N = 90;
+    const strokeArc = (a0, a1) => {
+      for (const [lw, col] of [[th, "#9c6f3f"], [Math.max(1, th * 0.35), "#5f4326"]]) {
+        ctx.beginPath();
+        for (let i = 0; i <= N; i++) {
+          const a = a0 + (a1 - a0) * (i / N), q = ellPt(a);
+          if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
+        }
+        ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.stroke();
+      }
+    };
+    const gapHalf = F.gapHalf;
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    strokeArc(phi + gapHalf, phi - gapHalf + 2 * Math.PI);
+    const PA = ellPt(phi - gapHalf), PB = ellPt(phi + gapHalf), G = ellPt(phi);
+    const post = (Q) => { ctx.fillStyle = "#6b4a28"; ctx.fillRect(Q.x - th * 0.9, Q.y - th * 0.9, th * 1.8, th * 1.8); };
+    post(PA); post(PB);
     const open = F.open;
-    const drawDoor = (end, dir) => {
-      const len = GATE_HALF * (1 - open * 0.82);
-      const tip = [end[0] + dir[0] * len, end[1] + dir[1] * len];
-      const A = S(end[0], end[1]), B = S(tip[0], tip[1]);
+    const doorLen = GATE_HALF * 30 * z;
+    const leaf = (hinge) => {
+      const dx = C.x - hinge.x, dy = C.y - hinge.y;
+      const dl = Math.hypot(dx, dy) || 1;
+      const openT = { x: hinge.x + dx / dl * doorLen, y: hinge.y + dy / dl * doorLen };
+      const tip = { x: G.x + (openT.x - G.x) * open, y: G.y + (openT.y - G.y) * open };
       ctx.strokeStyle = "#cfa366"; ctx.lineWidth = th * 0.9;
-      ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(hinge.x, hinge.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
     };
-    drawDoor(eA, along);
-    drawDoor(eB, [-along[0], -along[1]]);
+    leaf(PA); leaf(PB);
   }
 
   // ---------- 绘制：环境装饰（底边中点锚点，逐项参与深度排序） ----------
@@ -1165,9 +1208,13 @@
     // 深度排序 drawList
     const drawList = [];
     for (const b of D.buildings) {
-      drawList.push({ kind: "b", depth: (b.grid[1] + b.grid[3]) * 1000 + (b.grid[0] + b.grid[2]), b });
+      // 场地类（操场）sprite 主体是平面跑道/草地，按地面层（北角）深度：玩家在跑道/草坪任意位置都可见；立体看台在边缘不影响
+      let depth;
+      if (b.cat === "field") depth = (b.grid[1] - 2) * 1000 + (b.grid[0] + b.grid[2] / 2);
+      else depth = (b.grid[1] + b.grid[3]) * 1000 + (b.grid[0] + b.grid[2]);
+      drawList.push({ kind: "b", depth, b });
     }
-    for (const F of fences) drawList.push({ kind: "f", depth: F.g.cy * 1000 + F.g.cx, F });
+    for (const F of fences) drawList.push({ kind: "f", depth: (F.ccy + F.R) * 1000 + (F.ccx + F.R) + 1, F });
     for (const d of DECOR) drawList.push({ kind: "d", depth: d.gy * 1000 + d.gx, d });
     const pg = ({ gx: player.wx, gy: player.wy });
     drawList.push({ kind: "p", depth: pg.gy * 1000 + pg.gx });
