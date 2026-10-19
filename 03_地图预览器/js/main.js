@@ -89,14 +89,14 @@
   // 每栋南角在图像中的归一化锚点：ax=水平中心（南角），ay=主体南墙根所在高度（避开南伸台阶）。
   // ay = 南墙根/场地南缘（地面接地点）在图像高度的归一化位置，锚到 footprint 南角。
   const ANCHOR_AY = {
-    "FIELD-W": 0.98, "GYM": 0.99, "TEACH-1": 0.99, "LAB-TECH": 0.95, "GATE-S": 0.97,
+    "FIELD-W": 0.98, "GYM": 0.99, "TEACH-1": 0.99, "LAB-TECH": 0.98, "GATE-S": 0.97,
     "GATE-E": 0.92, "LIB": 0.99, "WENLI": 0.95, "TEACH-2": 0.97, "ACT": 0.85,
     "CAN-YULAN": 1.0, "CAN-ZIZHU": 0.94, "ENG-TRAIN": 0.96, "FIELD-N": 0.98,
     "MOUNT-YUPING": 1.0, "GATE-W": 0.81
   };
   // ax = 南角（最近角，南墙↔东墙交汇）在图像宽度的归一化位置；标准等距矩形=fw/(fw+fh)，异形/台阶楼目视微调
   const ANCHOR_AX = {
-    "FIELD-W": 0.36, "GYM": 0.50, "TEACH-1": 0.68, "LAB-TECH": 0.42, "GATE-S": 0.71,
+    "FIELD-W": 0.36, "GYM": 0.50, "TEACH-1": 0.68, "LAB-TECH": 0.51, "GATE-S": 0.71,
     "GATE-E": 0.35, "LIB": 0.57, "WENLI": 0.47, "TEACH-2": 0.53, "ACT": 0.60,
     "CAN-YULAN": 0.46, "CAN-ZIZHU": 0.41, "ENG-TRAIN": 0.48, "FIELD-N": 0.33,
     "MOUNT-YUPING": 0.64, "GATE-W": 0.33

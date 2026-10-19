@@ -158,10 +158,10 @@ window.CAMPUS_DATA = {
    "cat": "lab",
    "img": "img/sprites/LAB-TECH.png",
    "grid": [
-    86.39,
-    159.83,
-    24.69,
-    34.18
+    84,
+    163.9,
+    27,
+    26
    ],
    "bbox": [
     0,
