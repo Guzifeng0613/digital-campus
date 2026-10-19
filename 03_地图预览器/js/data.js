@@ -21,11 +21,7 @@ window.CAMPUS_DATA = {
    22.0,
    11.0
   ],
-  "gridRange": [
-   6.0,
-   6.0,
-   144.0,
-   271.2
+  "gridRange": [6.0, 6.0, 150.0, 280.0
   ],
   "count": 16
  },
@@ -38,10 +34,7 @@ window.CAMPUS_DATA = {
    "cat": "field",
    "img": "img/sprites/FIELD-W.png",
    "grid": [
-    12.33,
-    191.16,
-    16.46,
-    29.12
+    7.00, 201.61, 26.79, 39.19
    ],
    "bbox": [
     0,
@@ -78,10 +71,7 @@ window.CAMPUS_DATA = {
    "cat": "gym",
    "img": "img/sprites/GYM.png",
    "grid": [
-    51.25,
-    224.71,
-    19.64,
-    19.63
+    40.32, 231.01, 38.51, 27.29
    ],
    "bbox": [
     44,
@@ -118,10 +108,7 @@ window.CAMPUS_DATA = {
    "cat": "teaching",
    "img": "img/sprites/TEACH-1.png",
    "grid": [
-    56.33,
-    197.81,
-    44.31,
-    20.89
+    74.65, 205.55, 40.19, 20.83
    ],
    "bbox": [
     20,
@@ -158,10 +145,7 @@ window.CAMPUS_DATA = {
    "cat": "lab",
    "img": "img/sprites/LAB-TECH.png",
    "grid": [
-    84,
-    163.9,
-    27,
-    26
+    88.79, 177.19, 35.36, 28.55
    ],
    "bbox": [
     0,
@@ -198,10 +182,7 @@ window.CAMPUS_DATA = {
    "cat": "gate",
    "img": "img/sprites/GATE-S.png",
    "grid": [
-    76.9,
-    260.5,
-    12.66,
-    5.06
+    74.32, 266.70, 15.40, 9.10
    ],
    "bbox": [
     64,
@@ -238,10 +219,7 @@ window.CAMPUS_DATA = {
    "cat": "gate",
    "img": "img/sprites/GATE-E.png",
    "grid": [
-    114.88,
-    165.52,
-    3.8,
-    6.96
+    141.30, 161.72, 7.37, 10.50
    ],
    "bbox": [
     56,
@@ -278,10 +256,7 @@ window.CAMPUS_DATA = {
    "cat": "library",
    "img": "img/sprites/LIB.png",
    "grid": [
-    79.43,
-    131.34,
-    17.72,
-    13.61
+    87.96, 134.62, 23.63, 19.20
    ],
    "bbox": [
     0,
@@ -318,10 +293,7 @@ window.CAMPUS_DATA = {
    "cat": "college",
    "img": "img/sprites/WENLI.png",
    "grid": [
-    104.75,
-    141.47,
-    11.39,
-    12.98
+    110.82, 145.97, 20.09, 21.00
    ],
    "bbox": [
     88,
@@ -358,10 +330,7 @@ window.CAMPUS_DATA = {
    "cat": "teaching",
    "img": "img/sprites/TEACH-2.png",
    "grid": [
-    62.97,
-    111.72,
-    19.94,
-    17.41
+    71.98, 111.47, 32.15, 23.52
    ],
    "bbox": [
     8,
@@ -398,10 +367,7 @@ window.CAMPUS_DATA = {
    "cat": "activity",
    "img": "img/sprites/ACT.png",
    "grid": [
-    38.6,
-    120.58,
-    16.78,
-    11.08
+    42.40, 116.05, 22.97, 16.46
    ],
    "bbox": [
     48,
@@ -438,10 +404,7 @@ window.CAMPUS_DATA = {
    "cat": "canteen",
    "img": "img/sprites/CAN-YULAN.png",
    "grid": [
-    41.45,
-    107.92,
-    7.6,
-    8.86
+    44.84, 100.13, 16.07, 14.70
    ],
    "bbox": [
     116,
@@ -478,10 +441,7 @@ window.CAMPUS_DATA = {
    "cat": "canteen",
    "img": "img/sprites/CAN-ZIZHU.png",
    "grid": [
-    24.04,
-    136.72,
-    8.23,
-    12.03
+    19.06, 138.62, 14.07, 21.70
    ],
    "bbox": [
     0,
@@ -518,10 +478,7 @@ window.CAMPUS_DATA = {
    "cat": "service",
    "img": "img/sprites/ENG-TRAIN.png",
    "grid": [
-    92.72,
-    72.47,
-    22.16,
-    24.06
+    103.95, 81.23, 25.12, 14.00
    ],
    "bbox": [
     44,
@@ -558,10 +515,7 @@ window.CAMPUS_DATA = {
    "cat": "field",
    "img": "img/sprites/FIELD-N.png",
    "grid": [
-    93.99,
-    33.22,
-    14.56,
-    29.75
+    94.75, 29.44, 16.74, 26.60
    ],
    "bbox": [
     56,
@@ -598,10 +552,7 @@ window.CAMPUS_DATA = {
    "cat": "nature",
    "img": "img/sprites/MOUNT-YUPING.png",
    "grid": [
-    41.45,
-    15.5,
-    43.68,
-    24.69
+    35.01, 10.87, 52.51, 30.86
    ],
    "bbox": [
     0,
@@ -638,10 +589,7 @@ window.CAMPUS_DATA = {
    "cat": "gate",
    "img": "img/sprites/GATE-W.png",
    "grid": [
-    4.1,
-    134.5,
-    3.8,
-    7.6
+    7.67, 151.22, 6.70, 10.50
    ],
    "bbox": [
     48,

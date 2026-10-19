@@ -104,11 +104,11 @@
     "MOUNT-YUPING": 0.64, "GATE-W": 0.33
   };
   const ISO_K = {
-    "MOUNT-YUPING": 0.92, "FIELD-W": 1.0, "FIELD-N": 1.0,
-    "TEACH-1": 1.0, "LAB-TECH": 1.0, "GYM": 1.04, "ACT": 1.06, "ENG-TRAIN": 1.06,
-    "LIB": 1.1, "WENLI": 1.12, "TEACH-2": 1.1, "CAN-YULAN": 1.12, "CAN-ZIZHU": 1.16,
-    "GATE-S": 1.06, "GATE-E": 1.08, "GATE-W": 1.08
-  }; // 大组合保持1.0，单栋小楼放大饱满
+    "MOUNT-YUPING": 0.95, "FIELD-W": 1.0, "FIELD-N": 1.0,
+    "TEACH-1": 1.0, "LAB-TECH": 1.0, "GYM": 1.0, "ACT": 1.0, "ENG-TRAIN": 1.0,
+    "LIB": 1.0, "WENLI": 1.0, "TEACH-2": 1.0, "CAN-YULAN": 1.0, "CAN-ZIZHU": 1.0,
+    "GATE-S": 1.05, "GATE-E": 1.05, "GATE-W": 1.05
+  }; // 重标定：sprite 贴合官方真实 footprint，保留建筑间相对距离
   function spriteIsoScale(b, real) {
     const [, , fw, fh] = b.grid;
     const ov = window.__anchorOverride && window.__anchorOverride[b.id];
@@ -221,18 +221,18 @@
     g.lineJoin = "round"; g.lineCap = "round";
     for (const r of TD.roads) {
       if (r.paved) continue;
-      const w = r.w * TH * 1.7;
-      traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(124,96,56,0.28)"; g.lineWidth = w + 26; g.stroke();
-      traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(150,119,74,0.42)"; g.lineWidth = w + 12; g.stroke();
-      traceRoadIso(g, r.gpts); g.strokeStyle = "#c4a46c"; g.lineWidth = w; g.stroke();
-      traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(214,190,140,0.5)"; g.lineWidth = w * 0.5; g.stroke();
+      const w = r.w * TH * 1.05;
+      traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(124,96,56,0.22)"; g.lineWidth = w + 14; g.stroke();
+      traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(150,119,74,0.40)"; g.lineWidth = w + 7; g.stroke();
+      traceRoadIso(g, r.gpts); g.strokeStyle = "#c8ac78"; g.lineWidth = w; g.stroke();
+      traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(216,194,148,0.55)"; g.lineWidth = w * 0.42; g.stroke();
     }
     for (const r of TD.roads) {
       if (!r.paved) continue;
-      const w = r.w * TH * 1.7;
-      traceRoadIso(g, r.gpts); g.strokeStyle = "#9c9b91"; g.lineWidth = w + 14; g.stroke();
-      traceRoadIso(g, r.gpts); g.strokeStyle = "#c8c7bd"; g.lineWidth = w; g.stroke();
-      traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(255,255,255,0.5)"; g.lineWidth = Math.max(1.5, 0.28 * TH);
+      const w = r.w * TH * 1.05;
+      traceRoadIso(g, r.gpts); g.strokeStyle = "#9a9990"; g.lineWidth = w + 9; g.stroke();
+      traceRoadIso(g, r.gpts); g.strokeStyle = "#cdccc4"; g.lineWidth = w; g.stroke();
+      traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(255,255,255,0.55)"; g.lineWidth = Math.max(1.5, 0.22 * TH);
       g.setLineDash([TH * 1.2, TH * 1.6]); g.stroke(); g.setLineDash([]);
     }
   }
