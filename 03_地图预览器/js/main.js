@@ -86,25 +86,40 @@
   }
   // 点击命中盒：用逻辑 footprint 网格矩形（等距逆变换后判断）
   function clickRect(b) { return visRect(b); }
+  // 碰撞矩形集合：主 footprint + 可选的 b.colliders（网格绝对坐标矩形数组）。
+  // colliders 用于补足 3/4 立体 sprite 的高墙立面在屏幕向下延伸、单矩形覆盖不到的区域（如异形弯月两翼南墙）。
+  function blockRects(b) {
+    const rects = [visRect(b)];
+    if (b.colliders) for (const c of b.colliders) rects.push({ x: c[0], y: c[1], w: c[2], h: c[3] });
+    return rects;
+  }
+  function hitRect(gx, gy, r, pad) {
+    return gx > r.x - pad && gx < r.x + r.w + pad && gy > r.y - pad && gy < r.y + r.h + pad;
+  }
+  function blockBounds(b) {
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const r of blockRects(b)) { x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y); x1 = Math.max(x1, r.x + r.w); y1 = Math.max(y1, r.y + r.h); }
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }
 
   // ---------- 等距 sprite 视觉几何（图像→等距世界） ----------
   // 每栋南角在图像中的归一化锚点：ax=水平中心（南角），ay=主体南墙根所在高度（避开南伸台阶）。
   // ay = 南墙根/场地南缘（地面接地点）在图像高度的归一化位置，锚到 footprint 南角。
   const ANCHOR_AY = {
-    "FIELD-W": 0.67, "GYM": 0.99, "TEACH-1": 0.99, "LAB-TECH": 0.98, "GATE-S": 0.97,
+    "FIELD-W": 0.704, "GYM": 0.99, "TEACH-1": 0.99, "LAB-TECH": 0.98, "GATE-S": 0.97,
     "GATE-E": 0.92, "LIB": 0.99, "WENLI": 0.95, "TEACH-2": 0.97, "ACT": 0.85,
-    "CAN-YULAN": 1.0, "CAN-ZIZHU": 0.94, "ENG-TRAIN": 0.96, "FIELD-N": 0.896,
+    "CAN-YULAN": 1.0, "CAN-ZIZHU": 0.94, "ENG-TRAIN": 0.96, "FIELD-N": 1.053,
     "MOUNT-YUPING": 1.0, "GATE-W": 0.81
   };
   // ax = 南角（最近角，南墙↔东墙交汇）在图像宽度的归一化位置；标准等距矩形=fw/(fw+fh)，异形/台阶楼目视微调
   const ANCHOR_AX = {
-    "FIELD-W": 0.56, "GYM": 0.50, "TEACH-1": 0.68, "LAB-TECH": 0.51, "GATE-S": 0.71,
+    "FIELD-W": 0.335, "GYM": 0.50, "TEACH-1": 0.75, "LAB-TECH": 0.51, "GATE-S": 0.71,
     "GATE-E": 0.35, "LIB": 0.57, "WENLI": 0.47, "TEACH-2": 0.53, "ACT": 0.60,
-    "CAN-YULAN": 0.46, "CAN-ZIZHU": 0.41, "ENG-TRAIN": 0.48, "FIELD-N": 0.523,
+    "CAN-YULAN": 0.46, "CAN-ZIZHU": 0.41, "ENG-TRAIN": 0.48, "FIELD-N": 0.372,
     "MOUNT-YUPING": 0.64, "GATE-W": 0.33
   };
   const ISO_K = {
-    "MOUNT-YUPING": 0.95, "FIELD-W": 1.0, "FIELD-N": 1.0,
+    "MOUNT-YUPING": 0.95, "FIELD-W": 0.87, "FIELD-N": 0.741,
     "TEACH-1": 1.0, "LAB-TECH": 1.0, "GYM": 1.0, "ACT": 1.0, "ENG-TRAIN": 1.0,
     "LIB": 1.0, "WENLI": 1.0, "TEACH-2": 1.0, "CAN-YULAN": 1.0, "CAN-ZIZHU": 1.0,
     "GATE-S": 1.05, "GATE-E": 1.05, "GATE-W": 1.05
@@ -348,7 +363,7 @@
     ...SPRITE_IDS.map(id => loadImg("img/topdown/sprites/" + id + ".png").then(im => spriteImgs[id] = im)),
     ...TILE_IDS.map(t => loadImg("img/topdown/tiles/" + t + ".png").then(im => TILES[t] = im)),
     ...DECOR_IDS.map(t => loadImg("img/topdown/decor/" + t + ".png").then(im => spriteImgs[t] = im))
-  ]).then(() => { buildIsoGround(); buildMmGround(); });
+  ]).then(() => { buildIsoGround(); buildMmGround(); buildFences(); buildSpriteTops(); });
 
   // ---------- D 批角色帧：48×64，锚点脚底中心 (24,64) ----------
   const FRAME_W = 48, FRAME_H = 64;
@@ -400,11 +415,13 @@
   // ---------- 场地围栏 + 唯一入口（网格坐标，与投影无关） ----------
   const FENCE_WALL = 1.0, GATE_HALF = 3.3;
   const FIELDS = [
-    { id: "FIELD-N", gateSide: "gymax", gateT: 0.52, zone: "北操场", sRx: 878, sRy: 560, sAng: 0 },
-    { id: "FIELD-W", gateSide: "gxmax", gateT: 0.5, zone: "风雨操场", fR: 16.5, fdy: -3 }
+    { id: "FIELD-N", gateSide: "gymax", gateT: 0.52, zone: "北操场", sRx: 610, sRy: 282, sAng: -0.346, gatePhi: 2.795 },
+    { id: "FIELD-W", gateSide: "gymax", gateT: 0.5, zone: "风雨操场", sRx: 525, sRy: 250, sAng: -0.353, gatePhi: 2.789 }
   ];
   const GATE_ANG = { gxmax: 0, gymax: Math.PI / 2, gxmin: Math.PI, gymin: -Math.PI / 2 };
-  const fences = FIELDS.map(cfg => {
+  const fences = [];   // 图片加载后由 buildFences() 填充（椭圆半径需乘 sprite 缩放）
+  function buildFences() {
+  const built = FIELDS.map(cfg => {
     const b = D.buildings.find(x => x.id === cfg.id);
     const r = visRect(b);            // 围栏随放大后场地
     const fx = r.x, fy = r.y, fw = r.w, fh = r.h;
@@ -413,11 +430,20 @@
     const ang = GATE_ANG[cfg.gateSide];
     const useScreen = cfg.sRx && cfg.sRy;
     const sAng = cfg.sAng || 0;
-    const phi = Math.atan2(Math.sin(ang) * 16, Math.cos(ang) * 32);   // 门的屏幕方向
+    // 椭圆 sRx/sRy 按图像像素标定，绘制/碰撞在世界像素 → 乘 sprite 缩放 sc
+    const fReal = spriteImgs[cfg.id];
+    const fsc = fReal ? spriteIsoScale(b, fReal) : 1;
+    const sRx = cfg.sRx ? cfg.sRx * fsc : null;
+    const sRy = cfg.sRy ? cfg.sRy * fsc : null;
+    // 门方向：屏幕椭圆用世界屏幕角（等距变换，可由 gatePhi 精确覆盖）；逻辑圆用网格角
+    let phi;
+    if (cfg.gatePhi != null) phi = cfg.gatePhi;
+    else if (useScreen) phi = Math.atan2(16 * Math.cos(ang) + 16 * Math.sin(ang), 32 * Math.cos(ang) - 32 * Math.sin(ang));
+    else phi = ang;
     let gcx, gcy, gapHalf;
     if (useScreen) {
       const aG = phi - sAng, cosA = Math.cos(sAng), sinA = Math.sin(sAng);
-      const ex = cfg.sRx * Math.cos(aG), ey = cfg.sRy * Math.sin(aG);
+      const ex = sRx * Math.cos(aG), ey = sRy * Math.sin(aG);
       const csx = (ccx - ccy) * 32, csy = (ccx + ccy) * 16;
       const msx = csx + ex * cosA - ey * sinA, msy = csy + ex * sinA + ey * cosA;
       gcx = (msx / 32 + msy / 16) / 2; gcy = (msy / 16 - msx / 32) / 2;
@@ -428,9 +454,32 @@
       gapHalf = Math.asin(Math.min(0.98, GATE_HALF / R));
     }
     return { id: cfg.id, b, rect: [fx, fy, fw, fh], ccx, ccy, R, zone: cfg.zone,
-      sRx: cfg.sRx, sRy: cfg.sRy, sAng, phi, gapHalf,
+      sRx, sRy, sAng, phi, gapHalf,
       g: { side: cfg.gateSide, ang, cx: gcx, cy: gcy, dx: Math.cos(ang), dy: Math.sin(ang) }, open: 0, inside: false };
   });
+  fences.length = 0; fences.push(...built);
+  }
+  // 各 sprite 实体顶行（排除透明留白与灯杆/旗杆等细高装饰），用于标签贴实体顶部
+  const spriteTop = {};
+  function buildSpriteTops() {
+    for (const id of SPRITE_IDS) {
+      const real = spriteImgs[id]; if (!real) continue;
+      const c = document.createElement("canvas"); c.width = real.width; c.height = real.height;
+      const g = c.getContext("2d"); g.drawImage(real, 0, 0);
+      const d = g.getImageData(0, 0, real.width, real.height).data, W = real.width, H = real.height;
+      const rowCnt = y => { let n = 0; for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3] > 40) n++; return n; };
+      const need = Math.max(6, Math.round(W * 0.02));
+      let row = -1;
+      for (let y = 0; y < H; y++) {
+        if (rowCnt(y) >= need && (y + 1 >= H || rowCnt(y + 1) >= need)) { row = y; break; }
+      }
+      if (row < 0) { spriteTop[id] = { row: 0, cx: W / 2 }; continue; }
+      let sumx = 0, cnt = 0;
+      for (let y = row; y < Math.min(H, row + 10); y++)
+        for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3] > 40) { cnt++; sumx += x; }
+      spriteTop[id] = { row, cx: cnt ? sumx / cnt : W / 2 };
+    }
+  }
   // 屏幕椭圆归一化：返回 d（边界=1）与椭圆参数角 alpha
   function ellNorm(F, gx, gy) {
     const sAng = F.sAng || 0, cosA = Math.cos(sAng), sinA = Math.sin(sAng);
@@ -469,8 +518,7 @@
     for (const b of D.buildings) {
       if (b.walkable) continue;
       if (b.id === "GATE-E" || b.id === "GATE-W") continue;   // 校门由伸缩门逻辑控制
-      const r = visRect(b);
-      if (gx > r.x - pad && gx < r.x + r.w + pad && gy > r.y - pad && gy < r.y + r.h + pad) return true;
+      for (const r of blockRects(b)) if (hitRect(gx, gy, r, pad)) return true;
     }
     for (const F of fences) if (fenceBlocked(gx, gy, F)) return true;
     for (const g of campusGates) {
@@ -553,15 +601,17 @@
     return null;
   }
   function openSpotsAround(b) {
-    const r = visRect(b);
-    const gx = r.x, gy = r.y, gw = r.w, gh = r.h;
-    const m = 2.4, step = 2, pts = [];
+    const bb = blockBounds(b);
+    const gx = bb.x, gy = bb.y, gw = bb.w, gh = bb.h;
+    const m = 2.6, step = 2, pts = [];
     for (let x = gx - m; x <= gx + gw + m; x += step) {
       pts.push({ gx: x, gy: gy - m }); pts.push({ gx: x, gy: gy + gh + m });
     }
     for (let y = gy - m; y <= gy + gh + m; y += step) {
       pts.push({ gx: gx - m, gy: y }); pts.push({ gx: gx + gw + m, gy: y });
     }
+    // 自定义碰撞矩形（南墙立面补块）的南缘正前方各加一个候选点，保证台阶凹处也有停靠点
+    if (b.colliders) for (const c of b.colliders) pts.push({ gx: c[0] + c[2] / 2, gy: c[1] + c[3] + m });
     const pg = { gx: player.wx, gy: player.wy };
     return pts.filter(p => !navBlocked(p.gx, p.gy))
       .sort((a, c) => Math.hypot(a.gx - pg.gx, a.gy - pg.gy) - Math.hypot(c.gx - pg.gx, c.gy - pg.gy));
@@ -602,6 +652,12 @@
       const t = nearestOpen(tx, ty);
       const p = t ? bfsToTarget(pg, t) : null;
       if (p) { startNav(p, b.name); return; }
+    }
+    // 自定义入口点（如主楼南大门正前方）：优先停靠在主入口，避免被高墙立面 collider 带到侧翼
+    if (b.entry) {
+      const te = nearestOpen(b.entry[0], b.entry[1]);
+      const pe = te ? bfsToTarget(pg, te) : null;
+      if (pe) { startNav(pe, b.name); return; }
     }
     const spots = openSpotsAround(b).slice(0, 12);
     let best = null, bestLen = Infinity;
@@ -997,9 +1053,9 @@ function drawFences(F) {
     const phi = F.phi;
     const ellPt = (a) => {
       if (useScreen) {
-        const la = a - sAng, lx = Math.cos(la), ly = Math.sin(la);
-        const t = 1 / Math.sqrt((lx * lx) / (F.sRx * F.sRx) + (ly * ly) / (F.sRy * F.sRy));
-        const ex = t * Math.cos(a), ey = t * Math.sin(a);
+        // 标准旋转椭圆：局部参数 a-sAng → 旋转 sAng；长轴世界角 = sAng（与 ellNorm/门点一致）
+        const la = a - sAng;
+        const ex = F.sRx * Math.cos(la), ey = F.sRy * Math.sin(la);
         return { x: C.x + (ex * cosA - ey * sinA) * z, y: C.y + (ex * sinA + ey * cosA) * z };
       }
       return S(F.ccx + F.R * Math.cos(a), F.ccy + F.R * Math.sin(a));
@@ -1122,8 +1178,12 @@ function drawFences(F) {
       if (real) {
         const a = spriteAnchor(b, real);
         const W = a.pxW * z, H = a.pxH * z;
-        lx = w2sX(a.x) + (0.5 - a.ax) * W;
-        ly = w2sY(a.y) - a.ay * H - 8;
+        const tly = w2sY(a.y) - a.ay * H;
+        // 标签 x 用 footprint 逻辑中心（最稳，不随顶行设备偏移）；y 用实体顶行（避开透明留白）
+        const r = visRect(b);
+        lx = w2sX(isoX(r.x + r.w / 2, r.y + r.h / 2));
+        const top = spriteTop[b.id];
+        ly = top ? tly + top.row * a.sc * z - 8 : tly - 8;
       } else {
         const r = visRect(b);
         const cx = r.x + r.w / 2, cy = r.y;
@@ -1163,10 +1223,23 @@ function drawFences(F) {
       mmCtx.stroke();
     }
     for (const b of D.buildings) {
+      if (b.cat === "field") continue; // 操场单独画椭圆
       const r = visRect(b);
       mmCtx.fillStyle = GROUP_COLOR[b.group] || "#9fb4d8";
       const p0 = w2m(r.x, r.y), p1 = w2m(r.x + r.w, r.y + r.h);
       mmCtx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
+    }
+    // 操场：方形俯视椭圆，南北长轴；北操场红跑道、风雨操场蓝跑道
+    for (const b of D.buildings) {
+      if (b.cat !== "field") continue;
+      const [gx, gy, gw, gh] = b.grid;
+      const p = w2m(gx + gw / 2, gy + gh / 2);
+      const rx = (gw / 2) * TILE * s, ry = (gh / 2) * TILE * s;
+      const isN = b.id === "FIELD-N";
+      mmCtx.fillStyle = "#7fbf5c";
+      mmCtx.beginPath(); mmCtx.ellipse(p.x, p.y, rx * 0.82, ry * 0.82, 0, 0, 7); mmCtx.fill();
+      mmCtx.strokeStyle = isN ? "#d8634f" : "#5fb4d6"; mmCtx.lineWidth = 2.4;
+      mmCtx.beginPath(); mmCtx.ellipse(p.x, p.y, rx, ry, 0, 0, 7); mmCtx.stroke();
     }
     // 视野框：屏幕四角 → 等距世界 → 网格 → 方形小地图包围矩形
     let gxmin = 1e9, gymin = 1e9, gxmax = -1e9, gymax = -1e9;
