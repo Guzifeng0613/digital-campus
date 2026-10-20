@@ -679,6 +679,15 @@
     return Math.hypot(player.wx - ox, player.wy - oy);
   }
   function updatePlayer(dt) {
+    // 调试钩子：window.__anim={moving,run,dir,phase} 时冻结角色姿态用于逐帧检查
+    if (window.__anim) {
+      player.moving = !!window.__anim.moving;
+      player.running = !!window.__anim.run;
+      player.facing = window.__anim.dir || player.facing;
+      player.phase = window.__anim.phase || 0;
+      updateDust(dt);
+      return;
+    }
     let dx = 0, dy = 0;
     if (keys["w"] || keys["arrowup"]) dy -= 1;
     if (keys["s"] || keys["arrowdown"]) dy += 1;
@@ -1140,25 +1149,27 @@ function drawFences(F) {
     const pimg = seq && seq[fi];
     let bob = 0;
     if (player.moving) {
-      const amp = player.running ? 3.6 : 1.8;
-      bob = -Math.abs(Math.sin(player.phase * Math.PI / 2)) * amp * z;
+      if (player.running) {
+        // 跑步：第2帧为腾空最高点，按 4 帧节奏给出明显抬升（跑感）
+        const lift = [0, 1.6, 5.2, 1.6][Math.floor(player.phase) % 4];
+        bob = -lift * z * PLAYER_SCALE;
+      } else {
+        // 走路：轻微起伏
+        bob = -Math.abs(Math.sin(player.phase * Math.PI / 2)) * 1.6 * z;
+      }
     } else bob = -Math.sin(player.idleT * 1.8) * 1.0 * z;
-    // 影子
-    ctx.fillStyle = "rgba(20,30,40,.3)";
-    ctx.beginPath(); ctx.ellipse(sx, sy, 9 * z * PLAYER_SCALE, 3.6 * z * PLAYER_SCALE, 0, 0, 7); ctx.fill();
+    // 影子（腾空时影子略变淡变小）
+    const airborne = player.moving && player.running && (Math.floor(player.phase) % 4 === 2);
+    ctx.fillStyle = airborne ? "rgba(20,30,40,.16)" : "rgba(20,30,40,.3)";
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, (airborne ? 7 : 9) * z * PLAYER_SCALE, (airborne ? 2.8 : 3.6) * z * PLAYER_SCALE, 0, 0, 7);
+    ctx.fill();
     if (pimg) {
-      ctx.imageSmoothingEnabled = z < 0.85;
+      ctx.imageSmoothingEnabled = false;
       ctx.save();
       ctx.translate(sx, sy + bob);
-      if (player.running) {
-        if (player.facing === "right") ctx.rotate(0.14);
-        else if (player.facing === "left") ctx.rotate(-0.14);
-        else if (player.facing === "down") ctx.scale(1.05, 0.92);
-        else ctx.scale(1.03, 0.97);
-      }
       ctx.drawImage(pimg, -fw / 2, -fh, fw, fh);
       ctx.restore();
-      ctx.imageSmoothingEnabled = true;
     }
     return g.gy * 1000 + g.gx;
   }
