@@ -415,8 +415,8 @@
   // ---------- 场地围栏 + 唯一入口（网格坐标，与投影无关） ----------
   const FENCE_WALL = 1.0, GATE_HALF = 3.3;
   const FIELDS = [
-    { id: "FIELD-N", gateSide: "gymax", gateT: 0.52, zone: "北操场", sRx: 610, sRy: 282, sAng: -0.346, gatePhi: 2.795 },
-    { id: "FIELD-W", gateSide: "gymax", gateT: 0.5, zone: "风雨操场", sRx: 525, sRy: 250, sAng: -0.353, gatePhi: 2.789 }
+    { id: "FIELD-N", gateSide: "gymax", gateT: 0.52, zone: "北操场", sRx: 610, sRy: 282, sAng: -0.346, gatePhi: 1.886 },
+    { id: "FIELD-W", gateSide: "gymax", gateT: 0.5, zone: "风雨操场", sRx: 525, sRy: 250, sAng: -0.353, gatePhi: 1.876 }
   ];
   const GATE_ANG = { gxmax: 0, gymax: Math.PI / 2, gxmin: Math.PI, gymin: -Math.PI / 2 };
   const fences = [];   // 图片加载后由 buildFences() 填充（椭圆半径需乘 sprite 缩放）
