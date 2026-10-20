@@ -461,6 +461,7 @@
   }
   // 各 sprite 实体顶行（排除透明留白与灯杆/旗杆等细高装饰），用于标签贴实体顶部
   const spriteTop = {};
+  const spriteBox = {};   // #73 实体归一化框 (u0,v0,u1,v1)，密度阈值剔除落地投影
   function buildSpriteTops() {
     for (const id of SPRITE_IDS) {
       const real = spriteImgs[id]; if (!real) continue;
@@ -478,6 +479,14 @@
       for (let y = row; y < Math.min(H, row + 10); y++)
         for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3] > 40) { cnt++; sumx += x; }
       spriteTop[id] = { row, cx: cnt ? sumx / cnt : W / 2 };
+      // #73 实体 bbox（alpha>120 且行列密度>1.5%）
+      {
+        const colEnough = Math.max(4, H * 0.015), rowEnough = Math.max(4, W * 0.015);
+        let x0 = -1, y0 = -1, x1 = -1, y1 = -1;
+        for (let x = 0; x < W; x++) { let n = 0; for (let y = 0; y < H; y++) if (d[(y * W + x) * 4 + 3] > 120) n++; if (n >= colEnough) { x1 = x; if (x0 < 0) x0 = x; } }
+        for (let y = 0; y < H; y++) { let n = 0; for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3] > 120) n++; if (n >= rowEnough) { y1 = y; if (y0 < 0) y0 = y; } }
+        if (x0 >= 0) spriteBox[id] = { u0: x0 / W, v0: y0 / H, u1: (x1 + 1) / W, v1: (y1 + 1) / H };
+      }
     }
   }
   // 屏幕椭圆归一化：返回 d（边界=1）与椭圆参数角 alpha
@@ -1103,24 +1112,24 @@ function drawFences(F) {
   // 按 map_data.json 布局手布：山脚松林、两操场外围树阵、主路路灯、楼前花坛/长椅/灌木
   const DECOR = [];
   function addDeco(id, gx, gy) { DECOR.push({ id, gx, gy }); }
-  // 玉屏山南麓松林（gy≈41，gx 44..80）
-  for (let gx = 45; gx <= 80; gx += 4) addDeco("tree_pine", gx, 41.5 + (gx % 3));
+  // 玉屏山南麓松林（随山平移，新南麓 gy≈-4）
+  for (let gx = 29; gx <= 62; gx += 4) addDeco("tree_pine", gx, -3.7 + (gx % 3));
   // FIELD-N 外围四角树
-  addDeco("tree_oak", 92.5, 31.5); addDeco("tree_oak", 110.0, 31.5);
-  addDeco("tree_oak", 92.5, 64.5); addDeco("tree_oak_b", 110.5, 64.5);
-  addDeco("tree_bush", 101.0, 31.0); addDeco("tree_bush", 101.0, 65.0);
+  addDeco("tree_oak", 98.1, -15.1); addDeco("tree_oak", 123.5, -15.1);
+  addDeco("tree_oak", 98.1, 32.8); addDeco("tree_oak_b", 124.2, 32.8);
+  addDeco("tree_bush", 110.5, -15.8); addDeco("tree_bush", 110.5, 33.5);
   // FIELD-W 外围四角树
-  addDeco("tree_oak", 11.0, 189.0); addDeco("tree_oak", 30.5, 189.0);
-  addDeco("tree_oak_b", 11.0, 222.5); addDeco("tree_oak", 30.5, 222.5);
-  // 主路两侧路灯（南北向主路 gx≈62 与 gx≈96）
-  for (let gy = 80; gy <= 250; gy += 16) { addDeco("lamp", 60.0, gy); addDeco("lamp", 98.0, gy + 6); }
+  addDeco("tree_oak", -20.0, 213.3); addDeco("tree_oak", 8.2, 213.3);
+  addDeco("tree_oak_b", -20.0, 261.9); addDeco("tree_oak", 8.2, 261.9);
+  // 主路两侧路灯（南北向主路，整体放大后 gx≈51 / 106）
+  for (let gy = 55; gy <= 302; gy += 23) { addDeco("lamp", 51.0, gy); addDeco("lamp", 106.0, gy + 9); }
   // TEACH-1 双D中轴门洞内的绿地/铺装已在 sprite 内绘制，不再外挂花坛，避免网格错位
   // LIB 门前长椅+灌木
-  addDeco("bench", 84.0, 146.5); addDeco("bench", 90.0, 146.5);
-  addDeco("shrub_a", 78.0, 146.0); addDeco("shrub_b", 99.0, 146.0);
+  addDeco("bench", 85.8, 151.7); addDeco("bench", 94.5, 151.7);
+  addDeco("shrub_a", 77.1, 150.9); addDeco("shrub_b", 107.5, 150.9);
   // 食堂/文理楼周边矮灌
-  addDeco("tree_bush", 42.0, 118.0); addDeco("tree_bush", 30.0, 150.0);
-  addDeco("shrub_a", 111.0, 155.0); addDeco("shrub_b", 38.0, 133.0);
+  addDeco("tree_bush", 24.9, 110.3); addDeco("tree_bush", 7.5, 156.8);
+  addDeco("shrub_a", 124.9, 164.0); addDeco("shrub_b", 19.1, 132.1);
   function drawDecor(d) {
     const z = view.zoom;
     const im = spriteImgs[d.id];
@@ -1335,6 +1344,16 @@ function drawFences(F) {
         ctx.strokeStyle = "rgba(37,240,255,.75)"; ctx.setLineDash([6, 4]); ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(ax - Ww / 2, ayy); ctx.lineTo(ax + Ww / 2, ayy); ctx.stroke();
         ctx.setLineDash([]);
+      }
+      // #73 屏幕实体矩形（绿框）
+      if (spriteBox[b.id]) {
+        const real = spriteImgs[b.id], a = spriteAnchor(b, real), z = view.zoom;
+        const sb = spriteBox[b.id];
+        const X = (a.x - a.ax * a.pxW + sb.u0 * a.pxW) * z + view.x;
+        const Y = (a.y - a.ay * a.pxH + sb.v0 * a.pxH) * z + view.y;
+        const Ww = (sb.u1 - sb.u0) * a.pxW * z, Hh = (sb.v1 - sb.v0) * a.pxH * z;
+        ctx.strokeStyle = "rgba(40,255,90,.9)"; ctx.lineWidth = 1.4; ctx.setLineDash([]);
+        ctx.strokeRect(X, Y, Ww, Hh);
       }
     }
     ctx.strokeStyle = "rgba(30,60,255,.7)"; ctx.lineWidth = 1.2;
