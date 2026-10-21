@@ -234,19 +234,39 @@
   }
   function paintRoadsIso(g) {
     g.lineJoin = "round"; g.lineCap = "round";
-    for (const r of TD.roads) {
-      if (r.paved) continue;
+    // 分层绘制：先画所有道路的“外边框”，再画所有“路面”，最后画中线。
+    // 这样路口处后画的路面会盖住相邻道路的边框，形成连续的整块路面（而非分段笔刷）。
+    const dirt = TD.roads.filter(r => !r.paved);
+    const pave = TD.roads.filter(r => r.paved);
+    // 1) 土路：最外层阴影
+    for (const r of dirt) {
       const w = r.w * TH * 1.05;
       traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(124,96,56,0.22)"; g.lineWidth = w + 14; g.stroke();
+    }
+    for (const r of dirt) {
+      const w = r.w * TH * 1.05;
       traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(150,119,74,0.40)"; g.lineWidth = w + 7; g.stroke();
+    }
+    for (const r of dirt) {
+      const w = r.w * TH * 1.05;
       traceRoadIso(g, r.gpts); g.strokeStyle = "#c8ac78"; g.lineWidth = w; g.stroke();
+    }
+    for (const r of dirt) {
+      const w = r.w * TH * 1.05;
       traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(216,194,148,0.55)"; g.lineWidth = w * 0.42; g.stroke();
     }
-    for (const r of TD.roads) {
-      if (!r.paved) continue;
+    // 2) 铺装路：先全部外边框
+    for (const r of pave) {
       const w = r.w * TH * 1.05;
       traceRoadIso(g, r.gpts); g.strokeStyle = "#9a9990"; g.lineWidth = w + 9; g.stroke();
+    }
+    // 3) 再全部路面（盖住路口边框）
+    for (const r of pave) {
+      const w = r.w * TH * 1.05;
       traceRoadIso(g, r.gpts); g.strokeStyle = "#cdccc4"; g.lineWidth = w; g.stroke();
+    }
+    // 4) 最后中线（白色虚线）
+    for (const r of pave) {
       traceRoadIso(g, r.gpts); g.strokeStyle = "rgba(255,255,255,0.55)"; g.lineWidth = Math.max(1.5, 0.22 * TH);
       g.setLineDash([TH * 1.2, TH * 1.6]); g.stroke(); g.setLineDash([]);
     }
@@ -360,9 +380,14 @@
   const TILE_IDS = ["grass_a", "grass_b", "dirt", "pave", "water", "jct",
     "jct_cross", "jct_t", "grass_dirt_edge", "grass_pave_edge"];
   const BOOT = Promise.all([
-    ...SPRITE_IDS.map(id => loadImg("img/topdown/sprites/" + id + ".png").then(im => spriteImgs[id] = im)),
-    ...TILE_IDS.map(t => loadImg("img/topdown/tiles/" + t + ".png").then(im => TILES[t] = im)),
-    ...DECOR_IDS.map(t => loadImg("img/topdown/decor/" + t + ".png").then(im => spriteImgs[t] = im))
+    ...SPRITE_IDS.map(id => loadImg("img/topdown/sprites/" + id + ".png?av=v20").then(im => spriteImgs[id] = im)),
+    ...TILE_IDS.map(t => loadImg("img/topdown/tiles/" + t + ".png?av=v20").then(im => TILES[t] = im)),
+    ...DECOR_IDS.map(t => loadImg("img/topdown/decor/" + t + ".png?av=v20").then(im => spriteImgs[t] = im)),
+    ...["GATE-W", "GATE-E"].map(id =>
+      Promise.all([
+        loadImg("img/topdown/sprites/" + id + "_towers.png?av=v20").then(im => spriteImgs[id + "_towers"] = im),
+        loadImg("img/topdown/sprites/" + id + "_bars.png?av=v20").then(im => spriteImgs[id + "_bars"] = im)
+      ]))
   ]).then(() => { buildIsoGround(); buildMmGround(); buildFences(); buildSpriteTops(); buildNavMesh(); scatterGreenery(); });
 
   // ---------- D 批角色帧：48×64，锚点脚底中心 (24,64) ----------
@@ -1472,6 +1497,38 @@
     const [fx, fy, fw, fh] = b.grid;
     return { x: isoX(fx + fw, fy + fh), y: isoY(fx + fw, fy + fh) };  // 南角
   }
+  // 校门伸缩门开合几何：固定端（门柱）位置 + 门洞方向（局部像素单位向量）
+  const GATE_GEOM = {
+    "GATE-W": { fx: 430, fy: 650, ux: 0.91, uy: -0.42 },
+    "GATE-E": { fx: 380, fy: 600, ux: 0.84, uy: -0.54 }
+  };
+  function drawGate(b, a, W, H, dx, dy) {
+    const z = view.zoom;
+    const gm = GATE_GEOM[b.id];
+    const g = campusGates.find(x => x.id === b.id);
+    const open = g ? g.open : 0;
+    const s = 1 - 0.85 * open;   // 伸缩门沿门洞方向压缩
+    // 1) 先画固定门楼
+    const towers = spriteImgs[b.id + "_towers"];
+    ctx.imageSmoothingEnabled = false;
+    if (towers) ctx.drawImage(towers, dx, dy, W, H);
+    // 2) 再画伸缩门：在局部坐标里沿门洞方向压缩
+    const bars = spriteImgs[b.id + "_bars"];
+    if (bars) {
+      ctx.save();
+      ctx.translate(dx, dy);
+      ctx.scale(W / bars.width, H / bars.height);   // 局部像素坐标系
+      ctx.translate(gm.fx, gm.fy);
+      // 沿 u 方向缩放
+      const q = s - 1;
+      ctx.transform(1 + q * gm.ux * gm.ux, q * gm.ux * gm.uy,
+                    q * gm.ux * gm.uy, 1 + q * gm.uy * gm.uy, 0, 0);
+      ctx.translate(-gm.fx, -gm.fy);
+      ctx.drawImage(bars, 0, 0);
+      ctx.restore();
+    }
+    ctx.imageSmoothingEnabled = true;
+  }
   function drawBuilding(b) {
     const z = view.zoom;
     const real = spriteImgs[b.id];
@@ -1481,9 +1538,14 @@
       const W = a.pxW * z, H = a.pxH * z;
       const dx = w2sX(a.x) - a.ax * W;
       const dy = w2sY(a.y) - a.ay * H;
-      ctx.imageSmoothingEnabled = false;   // NEAREST 硬像素
-      ctx.drawImage(real, dx, dy, W, H);
-      ctx.imageSmoothingEnabled = true;
+      // 校门：固定门楼 + 伸缩门开合动画
+      if (GATE_GEOM[b.id] && spriteImgs[b.id + "_towers"]) {
+        drawGate(b, a, W, H, dx, dy);
+      } else {
+        ctx.imageSmoothingEnabled = false;   // NEAREST 硬像素
+        ctx.drawImage(real, dx, dy, W, H);
+        ctx.imageSmoothingEnabled = true;
+      }
       if (window.__dbgAnchor === b.id) {
         const d = isoDiamond(fx, fy, fw, fh);
         ctx.strokeStyle = "#ff2a2a"; ctx.lineWidth = 3;
