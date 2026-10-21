@@ -846,6 +846,39 @@
     const r = visRect(b);
     return { id, b, open: 0, cx: r.x + r.w / 2, cy: r.y + r.h / 2 };
   });
+  // 建筑门（靠近时向内打开）：门扇宽度（网格单位，总开口）+ 门扇在 sprite 中的纵向位置（图像高度比例）。
+  // TEACH-1 为大拱门穿堂，不设门扇。
+  const DOOR_W = {
+    LIB: 3.6, ACT: 4.2, "CAN-YULAN": 3.6, "CAN-ZIZHU": 3.2, GYM: 5.0,
+    "TEACH-2": 3.6, WENLI: 3.6, "ENG-TRAIN": 3.4, "LAB-TECH": 4.0
+  };
+  const DOOR_YF = {
+    LIB: 0.83, ACT: 0.80, "CAN-YULAN": 0.67, "CAN-ZIZHU": 0.72, GYM: 0.745,
+    "TEACH-2": 0.90, WENLI: 0.834, "ENG-TRAIN": 0.74, "LAB-TECH": 0.846
+  };
+  // 门中心在 sprite 中的横向位置（图像宽度比例，默认 0.5）
+  const DOOR_XF = {
+    "CAN-ZIZHU": 0.31, GYM: 0.73, "TEACH-2": 0.47, WENLI: 0.625, "ENG-TRAIN": 0.31
+  };
+  // 由 sprite 像素点反算网格 y（zoom=1、原点 0 时的屏幕坐标）
+  function spritePxToGrid(b, real, px, py) {
+    const a = spriteAnchor(b, real);
+    const W = a.pxW, H = a.pxH;
+    const dx = a.x - a.ax * W, dy = a.y - a.ay * H;
+    const sx = dx + px / real.width * W, sy = dy + py / real.height * H;
+    return { gx: (sx / (TW / 2) + sy / (TH / 2)) / 2, gy: (sy / (TH / 2) - sx / (TW / 2)) / 2 };
+  }
+  let buildingDoors = [];
+  function initBuildingDoors() {
+    buildingDoors = Object.keys(DOOR_W).map(id => {
+      const b = D.buildings.find(x => x.id === id);
+      const real = spriteImgs[id];
+      if (!real) return null;
+      const xf = DOOR_XF[id] != null ? DOOR_XF[id] : 0.5;
+      const g = spritePxToGrid(b, real, real.width * xf, real.height * DOOR_YF[id]);
+      return { id, b, open: 0, cx: g.gx, cy: g.gy, w: DOOR_W[id] };
+    }).filter(Boolean);
+  }
   function blockedAt(gx, gy, pad) {
     if (gx < GX0 || gx > GX1 || gy < GY0 || gy > GY1) return true;
     // #80 通行层权威：建筑（实体菱形+异形colliders+南墙）·草坪·水体在 navMask 涂黑，
@@ -1234,6 +1267,11 @@
       const dist = Math.hypot(pg.gx - g.cx, pg.gy - g.cy);
       g.open += ((dist < 7.5 ? 1 : 0) - g.open) * k;
     }
+    // 建筑门：靠近南墙门中线即向内打开
+    for (const d of buildingDoors) {
+      const dist = Math.hypot(pg.gx - d.cx, pg.gy - d.cy);
+      d.open += ((dist < 5.5 ? 1 : 0) - d.open) * k;
+    }
   }
 
   // ---------- 输入 ----------
@@ -1395,6 +1433,7 @@
     dbg: {
       blockedAt, bfs, nearestOpen, openSpotsAround, fences, buildingScale, visRect, clickRect,
       gateState: () => campusGates.map(g => ({ id: g.id, open: g.open, cx: g.cx, cy: g.cy })),
+      doorState: () => buildingDoors.map(d => ({ id: d.id, open: d.open, cx: d.cx, cy: d.cy })),
       spriteInfo(id) {
         const b = D.buildings.find(x => x.id === id);
         const real = spriteImgs[id];
@@ -1561,6 +1600,47 @@
     }
     ctx.imageSmoothingEnabled = true;
   }
+  // 建筑门：在网格空间画门扇（绕外侧门轴向内转 90°），再投影到屏幕
+  function drawBuildingDoor(d) {
+    const z = view.zoom;
+    const open = d.open;
+    const half = d.w / 2;
+    const thick = 0.35;                       // 门扇厚度（网格单位）
+    const ang = open * Math.PI / 2;           // 0=贴墙，90°=向内
+    const G = (gx, gy) => ({ x: w2sX(isoX(gx, gy)), y: w2sY(isoY(gx, gy)) });
+    const poly = (pts, fill, stroke) => {
+      ctx.beginPath();
+      pts.forEach((p, i) => { const q = G(p[0], p[1]); i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); });
+      ctx.closePath();
+      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+      if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = Math.max(1, 1.2 * z); ctx.stroke(); }
+    };
+    // 门洞（开启后露出的室内暗部）：随门扇开度渐显
+    if (open > 0.02) {
+      ctx.globalAlpha = Math.min(1, open * 1.4);
+      poly([
+        [d.cx - half, d.cy], [d.cx + half, d.cy],
+        [d.cx + half, d.cy - thick], [d.cx - half, d.cy - thick]
+      ], "#20242c", null);
+      ctx.globalAlpha = 1;
+    }
+    // 左门扇：门轴在左（cx-half），自由端从贴墙转到向内
+    const lx = d.cx - half;
+    poly([
+      [lx, d.cy],
+      [lx + half * Math.cos(ang), d.cy - half * Math.sin(ang)],
+      [lx + half * Math.cos(ang), d.cy - half * Math.sin(ang) - thick],
+      [lx, d.cy - thick]
+    ], "rgba(122,158,196,0.92)", "#1c2330");
+    // 右门扇：门轴在右（cx+half），自由端从贴墙转到向内
+    const rx = d.cx + half;
+    poly([
+      [rx, d.cy],
+      [rx - half * Math.cos(ang), d.cy - half * Math.sin(ang)],
+      [rx - half * Math.cos(ang), d.cy - half * Math.sin(ang) - thick],
+      [rx, d.cy - thick]
+    ], "rgba(134,168,204,0.92)", "#1c2330");
+  }
   function drawBuilding(b) {
     if (b._hidden) return;
     const z = view.zoom;
@@ -1578,6 +1658,11 @@
         ctx.imageSmoothingEnabled = false;   // NEAREST 硬像素
         ctx.drawImage(real, dx, dy, W, H);
         ctx.imageSmoothingEnabled = true;
+      }
+      // 建筑门：门扇向内开合（画在 sprite 之上）
+      if (DOOR_W[b.id]) {
+        const d = buildingDoors.find(x => x.id === b.id);
+        if (d) drawBuildingDoor(d);
       }
       if (window.__dbgAnchor === b.id) {
         const d = isoDiamond(fx, fy, fw, fh);
@@ -1997,6 +2082,7 @@ function drawFences(F) {
   centerView();
   updateFollowBtn(); updateRunBtn();
   Promise.all([BOOT, playerLoad]).then(() => {
+    initBuildingDoors();
     loadedN = TOTAL_ASSETS;
     const pe = document.getElementById("pct"), pf = document.getElementById("pfill");
     if (pe) pe.textContent = "100%";
