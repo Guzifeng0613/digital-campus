@@ -363,7 +363,7 @@
     ...SPRITE_IDS.map(id => loadImg("img/topdown/sprites/" + id + ".png").then(im => spriteImgs[id] = im)),
     ...TILE_IDS.map(t => loadImg("img/topdown/tiles/" + t + ".png").then(im => TILES[t] = im)),
     ...DECOR_IDS.map(t => loadImg("img/topdown/decor/" + t + ".png").then(im => spriteImgs[t] = im))
-  ]).then(() => { buildIsoGround(); buildMmGround(); buildFences(); buildSpriteTops(); });
+  ]).then(() => { buildIsoGround(); buildMmGround(); buildFences(); buildSpriteTops(); buildNavMesh(); });
 
   // ---------- D 批角色帧：48×64，锚点脚底中心 (24,64) ----------
   const FRAME_W = 48, FRAME_H = 64;
@@ -516,6 +516,285 @@
     if (F.sRx && F.sRy) return ellNorm(F, gx, gy).d < 0.92;
     return Math.hypot(gx - F.ccx, gy - F.ccy) < F.R - 0.6;
   }
+
+  // ---------- #80 地面通行层（等距世界像素栅格，与视觉 1:1 对齐）：只允许走道路/铺装/操场内部 ----------
+  const NAV_S = 0.3;                         // 世界像素 → 通行栅格缩放
+  const NAV_NC = Math.ceil(WORLD_W * NAV_S), NAV_NR = Math.ceil(WORLD_H * NAV_S);
+  const navCanvas = document.createElement("canvas"); navCanvas.width = NAV_NC; navCanvas.height = NAV_NR;
+  const navG = navCanvas.getContext("2d");
+  let navMask = null, navWalk = null;
+  // 建筑台阶/南墙落地向南补偿（网格），由 sprite 落地 alpha 标定
+  const COL_SOUTH = { "ACT": 3.0, "WENLI": 1.6, "ENG-TRAIN": 1.0, "GATE-E": 0.8, "TEACH-2": 0.7,
+    "CAN-ZIZHU": 0.5, "TEACH-1": 0.3, "LAB-TECH": 0.2, "GATE-S": 0.3 };
+  const GRID_WORLD = 35.8;                   // 1 网格在世界像素里的长度
+  const navPX = wx => (wx - WORLD_MINX) * NAV_S;
+  const navPY = wy => (wy - WORLD_MINY) * NAV_S;
+  // 在世界坐标里画菱形（网格矩形）
+  function navDiamondWorld(g, x, y, w, h, fill) {
+    const pts = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
+      .map(p => [isoX(p[0], p[1]), isoY(p[0], p[1])]);
+    g.beginPath();
+    pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]));
+    g.closePath();
+    if (fill) g.fill();
+  }
+  function navDiscWorld(gx, gy, rad) {
+    navG.beginPath();
+    navG.arc(isoX(gx, gy), isoY(gx, gy), rad * GRID_WORLD, 0, 7);
+    navG.fill();
+  }
+  function buildNavMesh() {
+    window.__probeLog = [];
+    const plog = (s) => window.__probeLog.push(s);
+    navG.setTransform(1, 0, 0, 1, 0, 0);
+    navG.fillStyle = "#000"; navG.fillRect(0, 0, NAV_NC, NAV_NR);
+    navG.setTransform(NAV_S, 0, 0, NAV_S, -WORLD_MINX * NAV_S, -WORLD_MINY * NAV_S);
+    navG.lineJoin = "round"; navG.lineCap = "round";
+    // 1) 道路（与视觉等距道路同几何，略放路缘）：白色可通行
+    for (const r of TD.roads) {
+      const pts = r.gpts; if (!pts || pts.length < 2) continue;
+      traceRoadIso(navG, pts);
+      navG.strokeStyle = "#fff";
+      navG.lineWidth = (r.w || 6) * TH * 1.15;
+      navG.stroke();
+    }
+    // 2) 操场内部（围栏椭圆内）白色
+    for (const F of fences) {
+      const csx = (F.ccx - F.ccy) * 32, csy = (F.ccx + F.ccy) * 16;
+      navG.fillStyle = "#fff";
+      navG.beginPath();
+      navG.ellipse(csx, csy, (F.sRx || 0) * 0.92, (F.sRy || 0) * 0.92, F.sAng || 0, 0, 7);
+      navG.fill();
+    }
+    // 3) 建筑实体（sprite 真实墙根）涂黑，切断道路；校门 GATE-* 是通道不涂黑（开合由运行时 gate 控制）
+    //    优先用逐像素算得的 b.collider（真实落地墙根矩形，比 grid 逻辑地块更贴合，含台阶/绿化空地），
+    //    异形再补 b.colliders（如一教双D两翼）；无 collider 时退回 visRect 逻辑地块。
+    navG.fillStyle = "#000";
+    for (const b of D.buildings) {
+      if (b.walkable) continue;
+      if (String(b.id).indexOf("GATE") === 0) continue;
+      if (b.collider) {
+        navDiamondWorld(navG, b.collider[0], b.collider[1], b.collider[2], b.collider[3], true);
+      } else {
+        const r = visRect(b);
+        const sx = COL_SOUTH[b.id] || 0;
+        navDiamondWorld(navG, r.x, r.y, r.w, r.h + sx, true);
+      }
+      if (b.colliders) for (const c of b.colliders) navDiamondWorld(navG, c[0], c[1], c[2], c[3], true);
+    }
+    const probe = (gx, gy) => {
+      const px = Math.round(navPX(isoX(gx, gy))), py = Math.round(navPY(isoY(gx, gy)));
+      if (px < 0 || py < 0 || px >= NAV_NC || py >= NAV_NR) return -1;
+      return navG.getImageData(px, py, 1, 1).data[0];
+    };
+    window.__probe = probe;
+    plog('after3 gx113: 180=' + probe(113, 180) + ' 200=' + probe(113, 200) + ' 220=' + probe(113, 220) + ' 237=' + probe(113, 237));
+    // 3.2) 穿堂主干道（through=true，如中轴迎宾大道穿过一教空中连廊下方、实验楼楼间缝）：
+    //      在建筑实体之上重画白色通道，地面架空段允许通行
+    navG.strokeStyle = "#fff"; navG.lineJoin = "round"; navG.lineCap = "round";
+    for (const r of TD.roads) {
+      if (!r.through) continue;
+      const pts = r.gpts; if (!pts || pts.length < 2) continue;
+      traceRoadIso(navG, pts);
+      navG.lineWidth = (r.w || 6) * TH * 1.15;
+      navG.stroke();
+    }
+    plog('after3.2 gx113: 180=' + probe(113, 180) + ' 200=' + probe(113, 200) + ' 220=' + probe(113, 220) + ' 237=' + probe(113, 237));
+    // 3.5) 操场围栏环：整环涂黑，唯一门缺口画白通道（像素 BFS 只能从门进）
+    for (const F of fences) {
+      const csx = (F.ccx - F.ccy) * 32, csy = (F.ccx + F.ccy) * 16;
+      const ca = Math.cos(F.sAng), sa = Math.sin(F.sAng);
+      const lp = (r, a) => {
+        const lx = F.sRx * r * Math.cos(a), ly = F.sRy * r * Math.sin(a);
+        return [csx + lx * ca - ly * sa, csy + lx * sa + ly * ca];
+      };
+      const aGate = F.phi - F.sAng;
+      navG.strokeStyle = "#000";
+      navG.lineWidth = (F.sRx * 0.09 + F.sRy * 0.09);
+      navG.beginPath();
+      navG.ellipse(csx, csy, F.sRx, F.sRy, F.sAng, 0, 7);
+      navG.stroke();
+      const pIn = lp(0.2, aGate), pOut = lp(2.1, aGate);
+      navG.strokeStyle = "#fff";
+      navG.lineWidth = 2 * F.sRx * Math.sin(F.gapHalf) * 1.4;
+      navG.beginPath(); navG.moveTo(pIn[0], pIn[1]); navG.lineTo(pOut[0], pOut[1]); navG.stroke();
+    }
+    // 4) 必达点白圆盘（最后画，保证入口连通）
+    navG.fillStyle = "#fff";
+    navDiscWorld(start.x, start.y, 2.4);
+    for (const b of D.buildings) if (b.entry) navDiscWorld(b.entry[0], b.entry[1], 2.0);
+    for (const b of D.buildings) if (String(b.id).indexOf("GATE") === 0) {
+      const g = b.grid; navDiscWorld(g[0] + g[2] / 2, g[1] + g[3] / 2, 3.2);
+    }
+    for (const F of fences) {
+      navDiscWorld(F.g.cx, F.g.cy, 2.6);
+      navDiscWorld(F.g.cx - F.g.dx * 3.4, F.g.cy - F.g.dy * 3.4, 2.4);
+      navDiscWorld(F.g.cx + F.g.dx * 3.4, F.g.cy + F.g.dy * 3.4, 2.4);
+    }
+    // 读像素（pad=0 原始通行层）
+    navG.setTransform(1, 0, 0, 1, 0, 0);
+    let img = navG.getImageData(0, 0, NAV_NC, NAV_NR).data;
+    navMask = new Uint8Array(NAV_NC * NAV_NR);
+    for (let i = 0; i < NAV_NC * NAV_NR; i++) navMask[i] = img[i * 4] > 127 ? 1 : 0;
+    const ckM = (gx, gy) => { const nx = Math.round(navPX(isoX(gx, gy))), ny = Math.round(navPY(isoY(gx, gy))); return (nx >= 0 && ny >= 0 && nx < NAV_NC && ny < NAV_NR) ? navMask[ny * NAV_NC + nx] : -1; };
+    plog('navMask读 gx113: 180=' + ckM(113, 180) + ' 188=' + ckM(113, 188) + ' 200=' + ckM(113, 200) + ' 220=' + ckM(113, 220) + ' 237=' + ckM(113, 237));
+    // 6) 形态学腐蚀：内缩玩家半径，得到单点查询即可行走的 navWalk（数学精确，避免斜向路缘采样锯齿）
+    const ER = Math.round(NAV_PAD * GRID_WORLD * NAV_S);   // 玩家半径（栅格像素）
+    let walk = navMask.slice();
+    for (let it = 0; it < ER; it++) {
+      const w2 = new Uint8Array(NAV_NC * NAV_NR);
+      for (let y = 1; y < NAV_NR - 1; y++) {
+        let row = y * NAV_NC;
+        for (let x = 1; x < NAV_NC - 1; x++) {
+          const k = row + x;
+          if (walk[k] && walk[k - 1] && walk[k + 1] && walk[k - NAV_NC] && walk[k + NAV_NC]) w2[k] = 1;
+        }
+      }
+      walk = w2;
+    }
+    navWalk = walk;
+    // 未腐蚀原始通行层快照：路径膨胀只允许在「原本就是白的道路/铺装/门廊」内进行，
+    // 绝不把建筑/草坪/水体等黑区涂白（防止错位 collider 边缘的伪白尖端把玩家引入实体）。
+    const rawMask = navMask.slice();
+    // 7) 腐蚀后「粗引道」补连：必达点白圆盘在腐蚀后常因细颈断裂而孤立，
+    //    直接在 navWalk 栅格上以粗引道（半径 ER+2，≥玩家半径）连到主路网，并同步写 navMask
+    const need = [];
+    for (const b of D.buildings) {
+      if (b.entry) need.push([b.entry[0], b.entry[1]]);
+      if (String(b.id).indexOf("GATE") === 0) { const g = b.grid; need.push([g[0] + g[2] / 2, g[1] + g[3] / 2]); }
+    }
+    for (const F of fences) {
+      need.push([F.g.cx - F.g.dx * 3.4, F.g.cy - F.g.dy * 3.4]);
+      need.push([F.g.cx + F.g.dx * 3.4, F.g.cy + F.g.dy * 3.4]);
+    }
+    const g2n = (gx, gy) => [Math.round(navPX(isoX(gx, gy))), Math.round(navPY(isoY(gx, gy)))];
+    const RR = ER + 8;   // 引道半径（≥玩家半径+转向裕量），保证连续移动在门前铺装不卡
+    function paintDisk(px, py, rad, allowBlack) {
+      const x0 = Math.max(0, px - rad), x1 = Math.min(NAV_NC - 1, px + rad);
+      const y0 = Math.max(0, py - rad), y1 = Math.min(NAV_NR - 1, py + rad);
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        if ((x - px) ** 2 + (y - py) ** 2 > rad * rad) continue;
+        const k = y * NAV_NC + x;
+        // 默认只在原始白区（道路/铺装/门廊）膨胀；allowBlack 才允许补黑区（真实引道）
+        if (!allowBlack && rawMask[k] === 0) continue;
+        navMask[k] = 1; navWalk[k] = 1;
+      }
+    }
+    function paintLink(ax, ay, bx, by, rad) {
+      const n = Math.ceil(Math.hypot(bx - ax, by - ay));
+      for (let i = 0; i <= n; i++) {
+        const t = n ? i / n : 0;
+        paintDisk(Math.round(ax + (bx - ax) * t), Math.round(ay + (by - ay) * t), rad);
+      }
+    }
+    function floodSeen() {
+      const seen = new Uint8Array(NAV_NC * NAV_NR);
+      const [sx, sy] = g2n(start.x, start.y);
+      const q = [];
+      if (sx >= 0 && sx < NAV_NC && sy >= 0 && sy < NAV_NR && navWalk[sy * NAV_NC + sx]) { seen[sy * NAV_NC + sx] = 1; q.push([sx, sy]); }
+      while (q.length) {
+        const [x, y] = q.pop();
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || nx >= NAV_NC || ny < 0 || ny >= NAV_NR) continue;
+          const k = ny * NAV_NC + nx; if (seen[k] || !navWalk[k]) continue;
+          seen[k] = 1; q.push([nx, ny]);
+        }
+      }
+      return seen;
+    }
+    // 7) 路径保障通道：在「原始 navMask（未腐蚀）」上从出生点 BFS 到每个必达点，
+    //    沿真实可走路径（只在白路/铺装/门廊内，绝不穿建筑或踩草坪）在 navWalk 上按玩家半径膨胀，
+    //    消除腐蚀窄颈/转角处的连续移动卡死。BFS 8 邻、对角不穿墙角。
+    const [sPX, sPY] = g2n(start.x, start.y);
+    const DX8 = [1, -1, 0, 0, 1, 1, -1, -1], DY8 = [0, 0, 1, -1, 1, -1, 1, -1];
+    function bfsRawPath(tx, ty) {
+      const goal = ty * NAV_NC + tx;
+      if (tx < 0 || ty < 0 || tx >= NAV_NC || ty >= NAV_NR || !navMask[goal]) return null;
+      const seen = new Uint8Array(NAV_NC * NAV_NR), prev = new Int32Array(NAV_NC * NAV_NR);
+      prev.fill(-1);
+      const q = [sPY * NAV_NC + sPX]; seen[q[0]] = 1; let head = 0;
+      while (head < q.length) {
+        const k = q[head++];
+        if (k === goal) break;
+        const x = k % NAV_NC, y = (k / NAV_NC) | 0;
+        for (let d = 0; d < 8; d++) {
+          const nx = x + DX8[d], ny = y + DY8[d];
+          if (nx < 0 || ny < 0 || nx >= NAV_NC || ny >= NAV_NR) continue;
+          const nk = ny * NAV_NC + nx;
+          if (seen[nk] || !navMask[nk]) continue;
+          if (d >= 4) { if (!navMask[ny * NAV_NC + x] || !navMask[y * NAV_NC + nx]) continue; } // 对角不穿墙角
+          seen[nk] = 1; prev[nk] = k; q.push(nk);
+        }
+      }
+      if (!seen[goal]) return null;
+      const path = []; let c = goal;
+      while (c !== -1) { path.push(c); c = prev[c]; }
+      return path;
+    }
+    const PR = ER + 3;   // 路径膨胀半径（玩家半径+余量），沿 BFS 中心线连续涂白
+    const [x113a, y113a] = g2n(113, 180), [x113b, y113b] = g2n(113, 230);
+    for (const [gx, gy] of need) {
+      const [px, py] = g2n(gx, gy);
+      if (px < 0 || px >= NAV_NC || py < 0 || py >= NAV_NR) continue;
+      const path = bfsRawPath(px, py);
+      if (path) {
+        const inv = (px, py) => { const wx = (px + WORLD_MINX * NAV_S) / NAV_S, wy = (py + WORLD_MINY * NAV_S) / NAV_S; return [((wx / 32) + (wy / 16)) / 2, ((wy / 16) - (wx / 32)) / 2]; };
+        const nearPts = path.filter(k => { const x = k % NAV_NC, y = (k / NAV_NC) | 0; return x >= Math.min(x113a, x113b) - PR && x <= Math.max(x113a, x113b) + PR && y >= Math.min(y113a, y113b) - PR && y <= Math.max(y113a, y113b) + PR; }).map(k => { const q = inv(k % NAV_NC, (k / NAV_NC) | 0); return q[0].toFixed(1) + ',' + q[1].toFixed(1); });
+        if (nearPts.length) plog('need(' + gx.toFixed(1) + ',' + gy.toFixed(1) + ') 走:' + [...new Set(nearPts)].join(' '));
+        for (const k of path) paintDisk(k % NAV_NC, (k / NAV_NC) | 0, PR);
+        paintDisk(px, py, PR + 2);
+      } else {
+        // fallback：原始 navMask 上完全断开（门被实体包围），才用粗引道直线连到最近连通点
+        const seen = floodSeen();
+        let best = null, bd = Infinity;
+        for (let yy = 0; yy < NAV_NR; yy += 2) for (let xx = 0; xx < NAV_NC; xx += 2) {
+          if (!seen[yy * NAV_NC + xx]) continue;
+          const dd = (xx - px) ** 2 + (yy - py) ** 2;
+          if (dd < bd) { bd = dd; best = [xx, yy]; }
+        }
+        if (best) { paintLink(px, py, best[0], best[1], RR); paintDisk(px, py, RR + 2); }
+      }
+    }
+    plog('after7 gx113: 180=' + probe(113, 180) + ' 200=' + probe(113, 200) + ' 220=' + probe(113, 220) + ' 237=' + probe(113, 237));
+  }
+  function groundWalkable(gx, gy, pad) {
+    const map = (pad && pad > 0.5) ? navWalk : navMask;
+    if (!map) return true;
+    const nx = Math.round(navPX(isoX(gx, gy))), ny = Math.round(navPY(isoY(gx, gy)));
+    return nx >= 0 && nx < NAV_NC && ny >= 0 && ny < NAV_NR && map[ny * NAV_NC + nx] === 1;
+  }
+  // 点是否落在穿堂主干道（through）走廊内（网格距离到折线 < 半幅）。
+  // 这类道路穿过建筑架空通道（一教空中连廊下方、实验楼楼间缝），通行层涂白、建筑碰撞放行。
+  function onThroughRoad(gx, gy, pad) {
+    for (const r of TD.roads) {
+      if (!r.through) continue;
+      const p = r.gpts; if (!p || p.length < 2) continue;
+      const halfW = (r.w || 6) * TH * 1.15 / 2 / GRID_WORLD + (pad || 0);
+      for (let i = 0; i < p.length - 1; i++) {
+        const ax = p[i][0], ay = p[i][1], bx = p[i + 1][0], by = p[i + 1][1];
+        const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+        let t = L2 ? ((gx - ax) * dx + (gy - ay) * dy) / L2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        if (Math.hypot(gx - (ax + dx * t), gy - (ay + dy * t)) < halfW) return true;
+      }
+    }
+    return false;
+  }
+  // 可视化（调试）：把通行层画到 overlay canvas
+  function drawNavOverlay() {
+    const old = document.getElementById('colov'); if (old) old.remove();
+    const c = document.createElement('canvas'); c.id = 'colov'; c.width = innerWidth; c.height = innerHeight;
+    c.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9999';
+    document.body.appendChild(c);
+    const g = c.getContext('2d');
+    g.fillStyle = 'rgba(60,220,120,0.5)';
+    for (let ny = 0; ny < NAV_NR; ny += 3) for (let nx = 0; nx < NAV_NC; nx += 3) {
+      if (!navMask[ny * NAV_NC + nx]) continue;
+      const wx = nx / NAV_S + WORLD_MINX, wy = ny / NAV_S + WORLD_MINY;
+      g.fillRect(w2sX(wx) - 1, w2sY(wy) - 1, 2, 2);
+    }
+  }
   // ---------- 东西校门伸缩门（闭合阻挡 / 接近收拢放行） ----------
   const campusGates = ["GATE-E", "GATE-W"].map(id => {
     const b = D.buildings.find(x => x.id === id);
@@ -524,11 +803,9 @@
   });
   function blockedAt(gx, gy, pad) {
     if (gx < GX0 || gx > GX1 || gy < GY0 || gy > GY1) return true;
-    for (const b of D.buildings) {
-      if (b.walkable) continue;
-      if (b.id === "GATE-E" || b.id === "GATE-W") continue;   // 校门由伸缩门逻辑控制
-      for (const r of blockRects(b)) if (hitRect(gx, gy, r, pad)) return true;
-    }
+    // #80 通行层权威：建筑（实体菱形+异形colliders+南墙）·草坪·水体在 navMask 涂黑，
+    // 道路·门前引道·穿堂连廊·操场内部为白。建筑碰撞已全部烘焙进通行层，单点判定即可。
+    if (!groundWalkable(gx, gy, pad)) return true;
     for (const F of fences) if (fenceBlocked(gx, gy, F)) return true;
     for (const g of campusGates) {
       // 校门闭合时阻挡放大后视觉 footprint；收拢 open 后放行
@@ -539,35 +816,147 @@
     return false;
   }
 
-  // ---------- 方格 BFS 寻路（4+对角，对角不穿墙角） ----------
-  const NAV_PAD = 1.2;
-  const MOVES = [[2,0],[-2,0],[0,2],[0,-2],[2,2],[2,-2],[-2,2],[-2,-2]];
+  // ---------- 方格 BFS 寻路（8 方向，对角不穿墙角；步长 1 适配沿等距对角线的道路） ----------
+  const NAV_PAD = 1.0;
   function navBlocked(gx, gy) { return blockedAt(gx, gy, NAV_PAD); }
+  // ---- BFS 在等距世界像素栅格上进行（像素连续，路口天然连通），再转回网格路径 ----
+  const BFS_STEP = 2;
+  const BFS_NC = Math.ceil(NAV_NC / BFS_STEP), BFS_NR = Math.ceil(NAV_NR / BFS_STEP);
+  const BFS_N = BFS_NC * BFS_NR;
+  const bfsPrev = new Int32Array(BFS_N);
+  const bfsStamp = new Int32Array(BFS_N);
+  const bfsQueue = new Int32Array(BFS_N);
+  let bfsVer = 0;
+  const BFS_DIRS = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  function g2px(gx, gy) { return [Math.round(navPX(isoX(gx, gy))), Math.round(navPY(isoY(gx, gy)))]; }
+  function px2g(px, py) {
+    const wx = px / NAV_S + WORLD_MINX, wy = py / NAV_S + WORLD_MINY;
+    return [0.5 * (wx / (TW / 2) + wy / (TH / 2)), 0.5 * (wy / (TH / 2) - wx / (TW / 2))];
+  }
+  function bfsNodeAt(nx, ny) {
+    if (nx < 0 || nx >= BFS_NC || ny < 0 || ny >= BFS_NR) return false;
+    const px = nx * BFS_STEP, py = ny * BFS_STEP;
+    return navWalk[py * NAV_NC + px] === 1;
+  }
+  // 螺旋寻找最近可走节点
+  function bfsFindOpen(nx, ny) {
+    if (bfsNodeAt(nx, ny)) return [nx, ny];
+    for (let ring = 1; ring <= 60; ring++) {
+      for (let dy = -ring; dy <= ring; dy++) for (let dx = -ring; dx <= ring; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+        if (bfsNodeAt(nx + dx, ny + dy)) return [nx + dx, ny + dy];
+      }
+    }
+    return null;
+  }
   function bfs(sg, tg) {
-    const U0 = Math.round(sg.gx / 2) * 2, V0 = Math.round(sg.gy / 2) * 2;
-    const U1 = Math.round(tg.gx / 2) * 2, V1 = Math.round(tg.gy / 2) * 2;
-    if (navBlocked(U1, V1)) return null;
-    const k = (u, v) => u + "," + v;
-    const queue = [[U0, V0]]; let head = 0;
-    const prev = new Map([[k(U0, V0), null]]);
+    if (!navWalk) return null;
+    const [sx, sy] = g2px(sg.gx, sg.gy), [tx, ty] = g2px(tg.gx, tg.gy);
+    const toNode = (x, y) => [Math.max(0, Math.min(BFS_NC - 1, Math.round(x / BFS_STEP))),
+                              Math.max(0, Math.min(BFS_NR - 1, Math.round(y / BFS_STEP)))];
+    let [snx, sny] = toNode(sx, sy), [tnx, tny] = toNode(tx, ty);
+    const sOpen = bfsFindOpen(snx, sny), tOpen = bfsFindOpen(tnx, tny);
+    if (!sOpen || !tOpen) return null;
+    [snx, sny] = sOpen; [tnx, tny] = tOpen;
+    bfsVer++;
+    const nk = (a, b) => b * BFS_NC + a;
+    const sk = nk(snx, sny), tk = nk(tnx, tny);
+    bfsStamp[sk] = bfsVer; bfsPrev[sk] = -1;
+    let head = 0, tail = 0; bfsQueue[tail++] = sk;
     let found = false;
-    while (head < queue.length) {
-      const [u, v] = queue[head++];
-      if (u === U1 && v === V1) { found = true; break; }
-      for (const [du, dv] of MOVES) {
-        const nu = u + du, nv = v + dv;
-        if (navBlocked(nu, nv)) continue;
-        if (du && dv && (navBlocked(u + du, v) || navBlocked(u, v + dv))) continue; // 不穿墙角
-        if (prev.has(k(nu, nv))) continue;
-        prev.set(k(nu, nv), [u, v]);
-        queue.push([nu, nv]);
+    while (head < tail) {
+      const cur = bfsQueue[head++];
+      if (cur === tk) { found = true; break; }
+      const cx = cur % BFS_NC, cy = (cur / BFS_NC) | 0;
+      for (const [dx, dy] of BFS_DIRS) {
+        const nx = cx + dx, ny = cy + dy;
+        if (!bfsNodeAt(nx, ny)) continue;
+        // 对角不穿墙角
+        if (dx && dy && (!bfsNodeAt(cx + dx, cy) || !bfsNodeAt(cx, cy + dy))) continue;
+        const k = nk(nx, ny);
+        if (bfsStamp[k] === bfsVer) continue;
+        bfsStamp[k] = bfsVer; bfsPrev[k] = cur; bfsQueue[tail++] = k;
       }
     }
     if (!found) return null;
-    const path = []; let cur = [U1, V1];
-    while (cur) { path.push([cur[0], cur[1]]); cur = prev.get(k(cur[0], cur[1])); }
-    path.reverse();
-    return path;
+    const pix = [];
+    let c = tk;
+    while (c !== -1) { pix.push([(c % BFS_NC) * BFS_STEP, ((c / BFS_NC) | 0) * BFS_STEP]); c = bfsPrev[c]; }
+    pix.reverse();
+    pix.push([tx, ty]);
+    // 像素→网格，先去除 BFS 8 邻接产生的重复点
+    const gp = [];
+    for (const pp of pix) {
+      const q = px2g(pp[0], pp[1]);
+      if (!gp.length || Math.hypot(q[0] - gp[gp.length - 1][0], q[1] - gp[gp.length - 1][1]) > 0.2) gp.push(q);
+    }
+    gp[0] = [sg.gx, sg.gy];
+    gp[gp.length - 1] = [tg.gx, tg.gy];
+    // 先 Douglas-Peucker 保留大拐点（含发夹弯），再对每段做中心线可走性校验，
+    // 弦切黑的弯道段回退到 BFS 原始点细分（避免拉直穿草坪）
+    return simplifyPath(gp);
+  }
+  // 纯中心线在腐蚀通行层上是否全程可走（步长 0.3 网格；navWalk 已含玩家半径腐蚀）
+  function losCenter(ax, ay, bx, by) {
+    const d = Math.hypot(bx - ax, by - ay);
+    const n = Math.max(1, Math.ceil(d / 0.3));
+    // 含终点 b（k=n）：路径节点本身也必须落在腐蚀后可走区内，否则玩家圆形会卡在拐点
+    for (let k = 1; k <= n; k++) {
+      const t = k / n;
+      if (!groundWalkable(ax + (bx - ax) * t, ay + (by - ay) * t, 1.0)) return false;
+    }
+    return true;
+  }
+  // DP + 中心线 LOS 混合简化
+  function simplifyPath(gp) {
+    const dpPts = simplifyDP(gp, 0.55);
+    const out = [dpPts[0]];
+    let gpStart = 0;
+    for (let di = 1; di < dpPts.length; di++) {
+      const b = dpPts[di];
+      const a = out[out.length - 1];
+      const gi = gp.indexOf(b);
+      if (losCenter(a[0], a[1], b[0], b[1])) {
+        out.push(b);
+      } else {
+        // 该段在 BFS 原始点上贪心 LOS 细分
+        let cur = a;
+        for (let k = gpStart + 1; k < gi; k++) {
+          if (!losCenter(cur[0], cur[1], gp[k][0], gp[k][1])) {
+            if (gp[k - 1] !== cur) out.push(gp[k - 1]);
+            cur = gp[k - 1];
+          }
+        }
+        if (b !== out[out.length - 1]) out.push(b);
+      }
+      gpStart = gi;
+    }
+    return out;
+  }
+  // 点到线段 ab 的欧氏距离
+  function ptSegDist(p, a, b) {
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const L2 = dx * dx + dy * dy;
+    if (L2 < 1e-9) return Math.hypot(p[0] - a[0], p[1] - a[1]);
+    let t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+  }
+  // Douglas-Peucker 路径简化
+  function simplifyDP(pts, tol) {
+    if (pts.length < 3) return pts;
+    const out = [pts[0]];
+    (function dp(a, b) {
+      if (b <= a + 1) return;
+      let dmax = 0, idx = -1;
+      for (let i = a + 1; i < b; i++) {
+        const d = ptSegDist(pts[i], pts[a], pts[b]);
+        if (d > dmax) { dmax = d; idx = i; }
+      }
+      if (dmax > tol) { dp(a, idx); out.push(pts[idx]); dp(idx, b); }
+    })(0, pts.length - 1);
+    out.push(pts[pts.length - 1]);
+    return out;
   }
   function fieldContaining(gx, gy) {
     for (const F of fences) if (insideField(gx, gy, F)) return F;
@@ -580,8 +969,8 @@
     const F = tF || sF, g = F.g;
     const dgx = g.cx - F.ccx, dgy = g.cy - F.ccy, gl = Math.hypot(dgx, dgy) || 1;
     const ux = dgx / gl, uy = dgy / gl, off = 2.6;
-    const outE = { gx: Math.round((g.cx + ux * off) / 2) * 2, gy: Math.round((g.cy + uy * off) / 2) * 2 };
-    const innE = { gx: Math.round((g.cx - ux * off) / 2) * 2, gy: Math.round((g.cy - uy * off) / 2) * 2 };
+    const outE = { gx: Math.round(g.cx + ux * off), gy: Math.round(g.cy + uy * off) };
+    const innE = { gx: Math.round(g.cx - ux * off), gy: Math.round(g.cy - uy * off) };
     const gate = [g.cx, g.cy];
     if (tF) {
       const p1 = bfs(sg, outE), p2 = bfs(innE, tg);
@@ -679,11 +1068,20 @@
   // 轴分离移动
   function moveBy(ux, uy, v) {
     const ox = player.wx, oy = player.wy;
-    const nx = player.wx + ux * v, ny = player.wy + uy * v;
-    if (!blockedAt(nx, ny, PAD)) { player.wx = nx; player.wy = ny; }
-    else {
-      if (!blockedAt(nx, player.wy, PAD)) player.wx = nx;
-      if (!blockedAt(player.wx, ny, PAD)) player.wy = ny;
+    // 把单帧位移拆成 ≤0.1 格的小步做轴分离滑动：即使掉帧导致 dt 很大，
+    // 也能沿墙连续滑过 L 形/锐角路口，而不是因一步撞墙而被判卡死并跳过路径节点。
+    const STEP = 0.1;
+    let remain = Math.max(0, v);
+    while (remain > 0) {
+      const s = Math.min(STEP, remain);
+      const px = player.wx, py = player.wy;
+      const nx = px + ux * s, ny = py + uy * s;
+      if (!blockedAt(nx, ny, PAD)) { player.wx = nx; player.wy = ny; }
+      else {
+        if (!blockedAt(nx, py, PAD)) player.wx = nx;
+        if (!blockedAt(player.wx, ny, PAD)) player.wy = ny;
+      }
+      remain -= s;
     }
     return Math.hypot(player.wx - ox, player.wy - oy);
   }
@@ -739,7 +1137,20 @@
         player.running = true; player.moving = true;
         const v = Math.min(speed * dt, dist);
         const moved = moveBy(ux, uy, v);
-        if (moved < v * 0.25) { navStuck++; if (navStuck > 10) { player.navPath.shift(); navStuck = 0; } }
+        if (moved < v * 0.25) {
+          navStuck++;
+          // 脱困：轴分离无法后退/侧移，玩家陷入道路边缘的局部死角。
+          // 连续卡住时从当前位置重新 BFS 到最终目标，沿真实路径绕出死角。
+          if (navStuck === 4 && player.navPath.length) {
+            const ft = player.navPath[player.navPath.length - 1];
+            const np = bfs({ gx: player.wx, gy: player.wy }, { gx: ft.x, gy: ft.y });
+            if (np && np.length >= 2) {
+              player.navPath = np.slice(1).map(([gxx, gyy]) => ({ x: gxx, y: gyy }));
+              navStuck = 0;
+            }
+          }
+          if (navStuck > 12) { player.navPath.shift(); navStuck = 0; }
+        }
         else navStuck = 0;
         player.phase += dt * (fast ? 14.5 : 11.5);
         player.idleT = 0;
@@ -773,10 +1184,10 @@
       if (nowIn && !F.inside) showZone("进入 · " + F.zone, "由入口门进入，场内可自由行走");
       F.inside = nowIn;
     }
-    // 东西伸缩门：接近门中线 ~5 格内收拢放行
+    // 东西伸缩门：接近门中线即收拢放行（阈值略大于闭合阻挡半径，避免自动寻路在门前死锁）
     for (const g of campusGates) {
       const dist = Math.hypot(pg.gx - g.cx, pg.gy - g.cy);
-      g.open += ((dist < 5.5 ? 1 : 0) - g.open) * k;
+      g.open += ((dist < 7.5 ? 1 : 0) - g.open) * k;
     }
   }
 
@@ -938,6 +1349,56 @@
     gotoPoint: (gx, gy) => navigateToPoint(gx, gy),
     dbg: {
       blockedAt, bfs, nearestOpen, openSpotsAround, fences, buildingScale, visRect, clickRect,
+      groundWalkable, drawNavOverlay, navInfo: () => ({ built: !!navMask, cells: navMask ? navMask.length : 0 }),
+      navThumb(targetId) {
+        const sc = 3, cw = Math.ceil(NAV_NC / sc), ch = Math.ceil(NAV_NR / sc);
+        const cv = document.createElement("canvas"); cv.width = cw; cv.height = ch;
+        const g = cv.getContext("2d");
+        const img = g.createImageData(cw, ch);
+        for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+          let v = 0;
+          for (let yy = 0; yy < sc; yy++) for (let xx = 0; xx < sc; xx++) {
+            const nx = Math.min(x * sc + xx, NAV_NC - 1), ny = Math.min(y * sc + yy, NAV_NR - 1);
+            if (navWalk[ny * NAV_NC + nx]) v++;
+          }
+          const o = (y * cw + x) * 4;
+          if (v > 0) { img.data[o] = 60; img.data[o + 1] = 200; img.data[o + 2] = 90; img.data[o + 3] = 255; }
+          else { img.data[o] = 28; img.data[o + 1] = 28; img.data[o + 2] = 32; img.data[o + 3] = 255; }
+        }
+        g.putImageData(img, 0, 0);
+        // 网格刻度（每 20 格）
+        g.fillStyle = "rgba(255,255,255,0.35)"; g.font = "7px monospace";
+        for (let gx = -40; gx < 200; gx += 20) {
+          for (let gy = -60; gy < 320; gy += 20) {
+            const px = navPX(isoX(gx, gy)) / sc, py = navPY(isoY(gx, gy)) / sc;
+            if (gx % 40 === 0 && gy % 40 === 0) g.fillText(gx + "," + gy, px + 1, py - 1);
+          }
+        }
+        D.buildings.forEach(b => {
+          const cx = b.grid[0] + b.grid[2] / 2, cy = b.grid[1] + b.grid[3] / 2;
+          const px = navPX(isoX(cx, cy)) / sc, py = navPY(isoY(cx, cy)) / sc;
+          g.fillStyle = b.id.indexOf("GATE") >= 0 ? "#ffee44" : "#ff5544";
+          g.beginPath(); g.arc(px, py, 4, 0, 7); g.fill();
+          g.fillStyle = "#fff"; g.font = "9px monospace"; g.fillText(b.id, px + 5, py + 3);
+        });
+        // 叠加南门→目标 BFS 路径（红线）
+        if (targetId) {
+          const Gs = D.buildings.find(x => x.id === "GATE-S"); const gg = Gs.grid;
+          const s = { gx: gg[0] + gg[2] / 2, gy: gg[1] - 6 };
+          const B = D.buildings.find(x => x.id === targetId);
+          const t = B.entry ? { gx: B.entry[0], gy: B.entry[1] } : { gx: B.grid[0] + B.grid[2] / 2, gy: B.grid[1] + B.grid[3] / 2 };
+          const p = bfs(s, t);
+          if (p) {
+            g.strokeStyle = "#ff3366"; g.lineWidth = 2; g.beginPath();
+            p.forEach((q, i) => {
+              const px = navPX(isoX(q[0], q[1])) / sc, py = navPY(isoY(q[0], q[1])) / sc;
+              if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+            });
+            g.stroke();
+          }
+        }
+        return cv.toDataURL();
+      },
       spriteGeometry(id, px, py) {
         const b = D.buildings.find(x => x.id === id);
         const real = spriteImgs[id];
