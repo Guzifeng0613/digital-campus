@@ -363,7 +363,7 @@
     ...SPRITE_IDS.map(id => loadImg("img/topdown/sprites/" + id + ".png").then(im => spriteImgs[id] = im)),
     ...TILE_IDS.map(t => loadImg("img/topdown/tiles/" + t + ".png").then(im => TILES[t] = im)),
     ...DECOR_IDS.map(t => loadImg("img/topdown/decor/" + t + ".png").then(im => spriteImgs[t] = im))
-  ]).then(() => { buildIsoGround(); buildMmGround(); buildFences(); buildSpriteTops(); buildNavMesh(); });
+  ]).then(() => { buildIsoGround(); buildMmGround(); buildFences(); buildSpriteTops(); buildNavMesh(); scatterGreenery(); });
 
   // ---------- D 批角色帧：48×64，锚点脚底中心 (24,64) ----------
   const FRAME_W = 48, FRAME_H = 64;
@@ -1350,6 +1350,8 @@
     dbg: {
       blockedAt, bfs, nearestOpen, openSpotsAround, fences, buildingScale, visRect, clickRect,
       groundWalkable, drawNavOverlay, navInfo: () => ({ built: !!navMask, cells: navMask ? navMask.length : 0 }),
+      decorCount: () => DECOR.length,
+      decorList: () => DECOR.slice(),
       navThumb(targetId) {
         const sc = 3, cw = Math.ceil(NAV_NC / sc), ch = Math.ceil(NAV_NR / sc);
         const cv = document.createElement("canvas"); cv.width = cw; cv.height = ch;
@@ -1591,6 +1593,52 @@ function drawFences(F) {
   // 食堂/文理楼周边矮灌
   addDeco("tree_bush", 24.9, 110.3); addDeco("tree_bush", 7.5, 156.8);
   addDeco("shrub_a", 124.9, 164.0); addDeco("shrub_b", 19.1, 132.1);
+  // 沿环路外围草地程序化散布（确定性伪随机，避开道路/建筑/水体）
+  // 必须在 buildNavMesh 后调用（groundWalkable 依赖 navMask）
+  function scatterGreenery() {
+    let _s = 1234567;
+    const rnd = () => { _s = (_s * 1664525 + 1013904223) >>> 0; return _s / 4294967296; };
+    const inWater = (gx, gy) => {
+      for (const n of TD.nature) {
+        if (n.cat !== "water") continue;
+        if (n.shape === "poly" && n.gpoly.length) {
+          let inside = false;
+          for (let i = 0, j = n.gpoly.length - 1; i < n.gpoly.length; j = i++) {
+            const xi = n.gpoly[i][0], yi = n.gpoly[i][1], xj = n.gpoly[j][0], yj = n.gpoly[j][1];
+            if (((yi > gy) !== (yj > gy)) && (gx < (xj - xi) * (gy - yi) / (yj - yi) + xi)) inside = !inside;
+          }
+          if (inside) return true;
+        } else if (n.grid) {
+          const g = n.grid;
+          if (gx >= g[0] && gx <= g[0] + g[2] && gy >= g[1] && gy <= g[1] + g[3]) return true;
+        }
+      }
+      return false;
+    };
+    // 外围带状区域：[gx0,gx1,gy0,gy1]
+    const zones = [
+      [-43, -34, -10, 270],   // 西环外
+      [-28, 132, -58, -12],   // 北环外（避开山体）
+      [176, 194, -8, 228],    // 东环外
+      [-12, 178, 278, 318],   // 南环外
+      [120, 170, 60, 120],    // 东部组团空地
+      [30, 70, 170, 220]      // 中西部组团空地
+    ];
+    const treePool = ["tree_oak", "tree_oak_b", "tree_pine", "tree_bush"];
+    for (const z of zones) {
+      for (let gx = z[0]; gx <= z[1]; gx += 6) {
+        for (let gy = z[2]; gy <= z[3]; gy += 6) {
+          if (rnd() < 0.42) continue;
+          const px = gx + (rnd() - 0.5) * 3, py = gy + (rnd() - 0.5) * 3;
+          if (groundWalkable(px, py) || inWater(px, py)) continue;
+          const r = rnd();
+          if (r < 0.55) addDeco(treePool[(rnd() * treePool.length) | 0], px, py);
+          else if (r < 0.8) addDeco(rnd() < 0.5 ? "shrub_a" : "shrub_b", px, py);
+          else addDeco("flowerbed", px, py);
+        }
+      }
+    }
+  }
   function drawDecor(d) {
     const z = view.zoom;
     const im = spriteImgs[d.id];
