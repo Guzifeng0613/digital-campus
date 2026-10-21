@@ -5,9 +5,9 @@ import {
 } from 'cc';
 import { META, BUILDINGS, GROUP_CN, CampusBuilding } from './CampusData';
 import {
-  GROUND_W, GROUND_H, gridToLocal, imageToLocal, localToImage, imageToGrid,
-  gridToImage, isBlocked, fitZoom, diamondCenter,
-  findPath, nearestOpenGrid, pathToBuilding
+  GROUND_W, GROUND_H, gridToLocal, gridToImage, imageToLocal, localToImage, imageToGrid,
+  isBlocked, fitZoom, spriteGeometry, GATE_GEOM,
+  findPath, nearestOpenGrid, pathToBuilding, GateOpen
 } from './IsoMath';
 
 const { ccclass } = _decorator;
@@ -16,6 +16,7 @@ const MM_COLOR: Record<string, [number, number, number]> = {
   teaching: [232, 118, 107], public: [240, 178, 76], sports: [95, 180, 214],
   dining: [123, 209, 138], gate: [201, 160, 220], nature: [143, 191, 127]
 };
+const FRAME_W = 48, FRAME_H = 64, PLAYER_SCALE = 1.7;
 
 /** 唯一入口：挂到场景任意节点即可（无 Canvas 时会自动创建）。运行时自动生成整张等距地图。 */
 @ccclass('CampusBootstrap')
@@ -27,7 +28,8 @@ export class CampusBootstrap extends Component {
   private player!: Node;
   private pg!: Graphics;                       // 代码绘制小人（帧加载失败时的兜底）
   private playerSprite: Sprite | null = null; // 像素角色序列帧
-  private playerFrames: Record<string, (SpriteFrame | null)[]> = {};
+  private playerFrames: Record<string,
+    { idle: (SpriteFrame | null)[]; walk: (SpriteFrame | null)[]; run: (SpriteFrame | null)[] }> = {};
   private panel!: Node;
   private photoSprite: Sprite | null = null;
 
@@ -38,7 +40,14 @@ export class CampusBootstrap extends Component {
   private phase = 0;
   private facing = 'down';
   private moving = false;
+  private running = false;
+  private runLock = false;
   private buildingNodes: { b: CampusBuilding; node: Node }[] = [];
+
+  // 校门开合
+  private gateOpen: GateOpen = {};
+  private gateBars: { id: string; pivot: Node }[] = [];
+  private btnRun!: Node;
 
   // 自动寻路
   private navPath: Vec2[] | null = null;          // 图像世界坐标路径点
@@ -170,30 +179,40 @@ export class CampusBootstrap extends Component {
     this.pathGfx = pathNode.addComponent(Graphics);
     this.content.addChild(pathNode);
 
-    // 建筑（并行加载，单个失败不阻断）
+    // 建筑（并行加载，单个失败不阻断；校门用固定门楼 _towers）
     console.log('[数字校园] 加载 ' + BUILDINGS.length + ' 栋建筑资源…');
-    const sfs = await Promise.all(BUILDINGS.map(b => this.loadSF(b.res).catch((err) => {
-      console.error('[数字校园] 资源加载失败：' + b.res + '（' + b.name + '）', err);
-      return null;
-    })));
+    const sfs = await Promise.all(BUILDINGS.map(b => {
+      const res = GATE_GEOM[b.id] ? b.res + '_towers' : b.res;
+      return this.loadSF(res).catch((err) => {
+        console.error('[数字校园] 资源加载失败：' + res + '（' + b.name + '）', err);
+        return null;
+      });
+    }));
     BUILDINGS.forEach((b, i) => {
       const src = sfs[i];
       if (!src) return;
       src.texture.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.POINT);
-      const [x0, y0, bw, bh] = b.bbox;
-      // 裁剪到非透明 bbox
+      const realW = src.texture.width, realH = src.texture.height;
+      const geom = spriteGeometry(b, realW, realH);
+      // 整图（不裁剪 bbox）
       const sf = new SpriteFrame();
       sf.texture = src.texture;
-      sf.rect = new Rect(x0, y0, bw, bh);
+      sf.rect = new Rect(0, 0, realW, realH);
       const node = this.makeSpriteNode(sf, b.id);
       const ut = node.getComponent(UITransform)!;
-      ut.setContentSize(bw * b.scale, bh * b.scale);
+      ut.setContentSize(geom.W, geom.H);
       ut.setAnchorPoint(0, 1);                       // 左上角
-      const local = imageToLocal(b.paste[0], b.paste[1]);
-      node.setPosition(local.x, local.y, 0);
+      node.setPosition(geom.lx, geom.ly, 0);
       node.getComponent(Sprite)!.sizeMode = Sprite.SizeMode.CUSTOM;
       this.content.addChild(node);
       this.buildingNodes.push({ b, node });
+      // 校门伸缩门（异步加载，动画开合）
+      if (GATE_GEOM[b.id]) {
+        this.loadSF(b.res + '_bars').then(bsf => {
+          bsf.texture.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.POINT);
+          this.buildGateBars(b, node, geom, bsf);
+        }).catch(() => null);
+      }
     });
     if (this.buildingNodes.length < BUILDINGS.length) {
       console.warn('[数字校园] 仅加载 ' + this.buildingNodes.length + '/' + BUILDINGS.length +
@@ -202,6 +221,50 @@ export class CampusBootstrap extends Component {
     this.buildLabels();
     this.buildMinimap();
     this.sortSprites();
+  }
+
+  // ---------- 校门伸缩门：固定端枢轴 + 旋转对齐门洞 + 沿门洞压缩 ----------
+  private buildGateBars(b: CampusBuilding, frameNode: Node,
+                        geom: { W: number; H: number }, bsf: SpriteFrame) {
+    const gm = GATE_GEOM[b.id];
+    const realW = bsf.texture.width, realH = bsf.texture.height;
+    const sx = geom.W / realW, sy = geom.H / realH;
+    // 枢轴节点：固定端（门柱）位置，旋转使门洞方向对齐 x 轴
+    const pivot = new Node('GatePivot');
+    pivot.layer = UI;
+    pivot.addComponent(UITransform);
+    pivot.setPosition(gm.fx * sx, -gm.fy * sy, 0);
+    pivot.angle = Math.atan2(gm.uy, gm.ux) * 180 / Math.PI;
+    // 伸缩门（整图）：偏移使固定端落在枢轴原点
+    const bars = new Node('GateBars');
+    bars.layer = UI;
+    const ut = bars.addComponent(UITransform);
+    ut.setContentSize(geom.W, geom.H);
+    ut.setAnchorPoint(0, 1);
+    const sp = bars.addComponent(Sprite);
+    sp.spriteFrame = bsf;
+    sp.sizeMode = Sprite.SizeMode.CUSTOM;
+    bars.setPosition(-gm.fx * sx, gm.fy * sy, 0);
+    pivot.addChild(bars);
+    frameNode.addChild(pivot);
+    this.gateBars.push({ id: b.id, pivot });
+    this.gateOpen[b.id] = 0;
+  }
+  // 角色靠近校门时开合（靠近目标点则 open→1，否则→0）
+  private updateGates(dt: number) {
+    const pg = imageToGrid(this.playerImg.x, this.playerImg.y);
+    for (const x of this.gateBars) {
+      const b = BUILDINGS.find(z => z.id === x.id)!;
+      const [gx, gy, w, h] = b.grid;
+      const cx = gx + w / 2, cy = gy + h / 2;
+      const d = Math.hypot(pg.gx - cx, pg.gy - cy);
+      const target = d < 7.5 ? 1 : 0;
+      const cur = this.gateOpen[x.id] || 0;
+      const open = cur + (target - cur) * Math.min(1, dt * 5);
+      this.gateOpen[x.id] = open;
+      const s = 1 - 0.85 * open;
+      x.pivot.setScale(s, 1, 1);
+    }
   }
 
   // ---------- 建筑名标签（canvas 层，字号恒定；放大到阈值后显示） ----------
@@ -235,10 +298,14 @@ export class CampusBootstrap extends Component {
     const vs = this.viewSize();
     for (const { b, root } of this.labelNodes) {
       if (!show) { if (root.active) root.active = false; continue; }
-      const [x0, y0, bw] = b.bbox;
-      const top = imageToLocal(b.paste[0], b.paste[1]);   // sprite 左上角（锚点 0,1）
-      const ux = (top.x + bw * b.scale / 2) * this.zoom + cp.x;
-      const uy = top.y * this.zoom + cp.y + 14;
+      const entry = this.buildingNodes.find(x => x.b === b);
+      if (!entry) { if (root.active) root.active = false; continue; }
+      const ut = entry.node.getComponent(UITransform)!;
+      // 节点（锚点 0,1）顶部中心
+      const cx = entry.node.position.x + ut.contentSize.width / 2;
+      const cy = entry.node.position.y;
+      const ux = cx * this.zoom + cp.x;
+      const uy = cy * this.zoom + cp.y + 14;
       if (ux < -vs.x / 2 - 80 || ux > vs.x / 2 + 80 ||
           uy < -vs.y / 2 - 30 || uy > vs.y / 2 + 30) { root.active = false; continue; }
       root.active = true;
@@ -360,26 +427,24 @@ export class CampusBootstrap extends Component {
     return n;
   }
 
-  // ---------- 角色（像素序列帧，加载失败时回退 Graphics 绘制） ----------
+  // ---------- 角色（像素序列帧 idle/walk/run，加载失败时回退 Graphics 绘制） ----------
   private async loadPlayerFrames() {
     const dirs = ['down', 'up', 'left', 'right'];
-    const tasks: Promise<SpriteFrame | null>[] = [];
-    for (const dir of dirs) for (let f = 0; f < 4; f++) {
-      tasks.push(this.loadSF('player/player_' + dir + '_' + f).catch(() => null));
-    }
-    const sfs = await Promise.all(tasks);
-    let i = 0;
     for (const dir of dirs) {
-      this.playerFrames[dir] = [];
+      const idle = await this.loadSF('player/' + dir + '_idle').catch(() => null);
+      const walk: (SpriteFrame | null)[] = [];
+      const run: (SpriteFrame | null)[] = [];
       for (let f = 0; f < 4; f++) {
-        const sf = sfs[i];
-        if (sf) sf.texture.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.POINT);
-        this.playerFrames[dir].push(sf);
-        i++;
+        walk.push(await this.loadSF('player/' + dir + '_walk_' + f).catch(() => null));
+        run.push(await this.loadSF('player/' + dir + '_run_' + f).catch(() => null));
       }
+      [idle, ...walk, ...run].forEach(sf => {
+        if (sf) sf.texture.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.POINT);
+      });
+      this.playerFrames[dir] = { idle: [idle], walk, run };
     }
-    const ok = Object.values(this.playerFrames).filter(arr => arr[0]).length;
-    console.log('[数字校园] 角色帧：' + (ok === 4 ? '4 方向 × 4 帧就绪' : ok + '/4 方向，将回退代码绘制'));
+    const ok = dirs.filter(d => this.playerFrames[d].idle[0]).length;
+    console.log('[数字校园] 角色帧：' + (ok === 4 ? '4 方向（idle/walk/run）就绪' : ok + '/4 方向，将回退代码绘制'));
   }
 
   private buildPlayer() {
@@ -393,7 +458,7 @@ export class CampusBootstrap extends Component {
     this.player = new Node('Player');
     this.player.layer = UI;
     const ut = this.player.addComponent(UITransform);
-    ut.setContentSize(64, 80);
+    ut.setContentSize(FRAME_W * PLAYER_SCALE, FRAME_H * PLAYER_SCALE);
     ut.setAnchorPoint(0.5, 0);             // 锚点在鞋底（帧图底部对齐脚点）
     this.playerSprite = this.player.addComponent(Sprite);
     this.playerSprite.sizeMode = Sprite.SizeMode.CUSTOM;
@@ -403,11 +468,19 @@ export class CampusBootstrap extends Component {
   }
 
   private updatePlayerFrame() {
-    const frames = this.playerFrames[this.facing];
-    const hasFrame = !!(frames && frames[0] && this.playerSprite);
+    const set = this.playerFrames[this.facing];
+    const hasFrame = !!(set && set.idle[0] && this.playerSprite);
     if (hasFrame) {
-      const f = this.moving ? (Math.floor(this.phase) % 4) : 0;
-      this.playerSprite!.spriteFrame = frames[f]!;
+      let sf: SpriteFrame | null;
+      if (this.moving) {
+        const seq = this.running ? set.run : set.walk;
+        sf = seq[Math.floor(this.phase) % 4] || set.idle[0];
+      } else {
+        sf = set.idle[0];
+      }
+      this.playerSprite!.spriteFrame = sf;
+      this.playerSprite!.node.getComponent(UITransform)!
+        .setContentSize(FRAME_W * PLAYER_SCALE, FRAME_H * PLAYER_SCALE);
       if (this.pg) this.pg.clear();
       this.player.setScale(1, 1, 1);
     } else {
@@ -485,7 +558,8 @@ export class CampusBootstrap extends Component {
   private centerView() {
     const vs = this.viewSize();
     this.zoom = fitZoom(vs.x, vs.y);
-    const dc = imageToLocal(diamondCenter().x, diamondCenter().y);
+    const [dx0, dy0, dx1, dy1] = META.diamond;
+    const dc = imageToLocal((dx0 + dx1) / 2, (dy0 + dy1) / 2);
     this.content.setScale(this.zoom, this.zoom, 1);
     this.content.setPosition(-dc.x * this.zoom, -dc.y * this.zoom, 0);
   }
@@ -583,13 +657,13 @@ export class CampusBootstrap extends Component {
   }
   private navigateToPoint(gx: number, gy: number) {
     const pg = imageToGrid(this.playerImg.x, this.playerImg.y);
-    const t = nearestOpenGrid(gx, gy, pg.gx, pg.gy, BUILDINGS);
+    const t = nearestOpenGrid(gx, gy, pg.gx, pg.gy, BUILDINGS, this.gateOpen);
     if (!t) { this.setNavTip('无法到达那里', true); return; }
-    this.setNavPath(findPath(pg, t, BUILDINGS), null);
+    this.setNavPath(findPath(pg, t, BUILDINGS, this.gateOpen), null);
   }
   private navigateToBuilding(b: CampusBuilding) {
     const pg = imageToGrid(this.playerImg.x, this.playerImg.y);
-    this.setNavPath(pathToBuilding(b, pg.gx, pg.gy, BUILDINGS), b.name);
+    this.setNavPath(pathToBuilding(b, pg.gx, pg.gy, BUILDINGS, this.gateOpen), b.name);
   }
 
   private drawPath() {
@@ -637,14 +711,15 @@ export class CampusBootstrap extends Component {
       if (Math.abs(dx) > Math.abs(dy)) this.facing = dx > 0 ? 'right' : 'left';
       else this.facing = dy > 0 ? 'down' : 'up';
       this.moving = true;
-      const v = 300 * dt;
+      this.running = this.runLock;
+      const v = (this.runLock ? 520 : 300) * dt;
       let nx = this.playerImg.x + dx * v;
       let ng = imageToGrid(nx, this.playerImg.y);
-      if (!isBlocked(ng.gx, ng.gy, BUILDINGS)) this.playerImg.x = nx;
+      if (!isBlocked(ng.gx, ng.gy, BUILDINGS, this.gateOpen)) this.playerImg.x = nx;
       let ny = this.playerImg.y + dy * v;
       ng = imageToGrid(this.playerImg.x, ny);
-      if (!isBlocked(ng.gx, ng.gy, BUILDINGS)) this.playerImg.y = ny;
-      this.phase += dt * 9;
+      if (!isBlocked(ng.gx, ng.gy, BUILDINGS, this.gateOpen)) this.playerImg.y = ny;
+      this.phase += dt * (this.runLock ? 13 : 9);
       this.follow = true; this.updateFollowBtn();
     } else if (this.navPath && this.navPath.length) {
       const tgt = this.navPath[0];
@@ -654,38 +729,42 @@ export class CampusBootstrap extends Component {
       if (dist < R) {
         this.navPath.shift(); this.navStuck = 0;
         if (!this.navPath.length) {
-          this.navPath = null; this.moving = false;
+          this.navPath = null; this.moving = false; this.running = false;
           this.setNavTip(this.navName ? '已到达：' + this.navName : '已到达', true);
           this.navName = '';
         }
       } else {
         this.moving = true;
+        this.running = this.runLock;
         const ux = ddx / dist, uy = ddy / dist;
         if (Math.abs(ux) > Math.abs(uy)) this.facing = ux > 0 ? 'right' : 'left';
         else this.facing = uy > 0 ? 'down' : 'up';
-        const v = Math.min(300 * dt, dist);
+        const speed = this.runLock ? 520 : 300;
+        const v = Math.min(speed * dt, dist);
         const ox = this.playerImg.x, oy = this.playerImg.y;
         const nx = this.playerImg.x + ux * v, ny = this.playerImg.y + uy * v;
         const gAll = imageToGrid(nx, ny);
-        if (!isBlocked(gAll.gx, gAll.gy, BUILDINGS)) { this.playerImg.x = nx; this.playerImg.y = ny; }
+        if (!isBlocked(gAll.gx, gAll.gy, BUILDINGS, this.gateOpen)) { this.playerImg.x = nx; this.playerImg.y = ny; }
         else {
           const gx = imageToGrid(nx, this.playerImg.y);
-          if (!isBlocked(gx.gx, gx.gy, BUILDINGS)) this.playerImg.x = nx;
+          if (!isBlocked(gx.gx, gx.gy, BUILDINGS, this.gateOpen)) this.playerImg.x = nx;
           const gy = imageToGrid(this.playerImg.x, ny);
-          if (!isBlocked(gy.gx, gy.gy, BUILDINGS)) this.playerImg.y = ny;
+          if (!isBlocked(gy.gx, gy.gy, BUILDINGS, this.gateOpen)) this.playerImg.y = ny;
         }
         if (Math.hypot(this.playerImg.x - ox, this.playerImg.y - oy) < v * 0.25) {
           this.navStuck++;
           if (this.navStuck > 10) { this.navPath.shift(); this.navStuck = 0; }
         } else this.navStuck = 0;
-        this.phase += dt * 9;
+        this.phase += dt * (this.runLock ? 13 : 9);
         this.follow = true; this.updateFollowBtn();
       }
     } else {
       this.moving = false;
+      this.running = false;
       this.navStuck = 0;
     }
 
+    this.updateGates(dt);
     const lp = imageToLocal(this.playerImg.x, this.playerImg.y);
     this.player.setPosition(lp.x, lp.y, 0);
     this.updatePlayerFrame();
@@ -732,6 +811,13 @@ export class CampusBootstrap extends Component {
     };
     this.btnFollow = mk('跟随角色', vs.x / 2 - 220, vs.y / 2 - 40, () => { this.follow = true; this.updateFollowBtn(); });
     mk('重置视角', vs.x / 2 - 90, vs.y / 2 - 40, () => { this.follow = false; this.centerView(); this.updateFollowBtn(); });
+    // 跑步开关
+    this.btnRun = mk('跑步：关', vs.x / 2 - 350, vs.y / 2 - 40, () => {
+      this.runLock = !this.runLock;
+      this.btnRun.getComponentInChildren(Label)!.string = '跑步：' + (this.runLock ? '开' : '关');
+      this.fillRound(this.btnRun, 120, 40,
+        this.runLock ? new Color(45, 108, 223, 255) : new Color(40, 58, 88, 240), 8);
+    });
 
     // 信息面板（默认隐藏，中心锚点）
     const panel = new Node('InfoPanel');
