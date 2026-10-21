@@ -6,7 +6,7 @@ import {
 import { META, BUILDINGS, GROUP_CN, CampusBuilding } from './CampusData';
 import {
   GROUND_W, GROUND_H, gridToLocal, gridToImage, imageToLocal, localToImage, imageToGrid,
-  isBlocked, fitZoom, spriteGeometry, GATE_GEOM,
+  isBlocked, fitZoom, spriteGeometry, GATE_GEOM, buildingDoorCenter, DOOR_W,
   findPath, nearestOpenGrid, pathToBuilding, GateOpen
 } from './IsoMath';
 
@@ -47,6 +47,9 @@ export class CampusBootstrap extends Component {
   // 校门开合
   private gateOpen: GateOpen = {};
   private gateBars: { id: string; pivot: Node }[] = [];
+  // 建筑门开合
+  private doorOpen: GateOpen = {};
+  private doorGfx: { id: string; g: Graphics; cx: number; cy: number }[] = [];
   private btnRun!: Node;
 
   // 自动寻路
@@ -206,6 +209,18 @@ export class CampusBootstrap extends Component {
       node.getComponent(Sprite)!.sizeMode = Sprite.SizeMode.CUSTOM;
       this.content.addChild(node);
       this.buildingNodes.push({ b, node });
+      // 建筑门（门扇绕外侧门轴向内打开）
+      if (DOOR_W[b.id] != null) {
+        const c = buildingDoorCenter(b, realW, realH);
+        const g = new Node('BuildingDoor_' + b.id);
+        g.layer = UI;
+        g.addComponent(UITransform);
+        const gg = g.addComponent(Graphics);
+        g.setPosition(gridToLocal(c.gx, c.gy));
+        this.content.addChild(g);
+        this.doorGfx.push({ id: b.id, g: gg, cx: c.gx, cy: c.gy });
+        this.doorOpen[b.id] = 0;
+      }
       // 校门伸缩门（异步加载，动画开合）
       if (GATE_GEOM[b.id]) {
         this.loadSF(b.res + '_bars').then(bsf => {
@@ -265,6 +280,53 @@ export class CampusBootstrap extends Component {
       const s = 1 - 0.85 * open;
       x.pivot.setScale(s, 1, 1);
     }
+  }
+
+  // ---------- 建筑门：角色靠近时门扇绕外侧门轴向内转 90° ----------
+  private updateDoors(dt: number) {
+    const pg = imageToGrid(this.playerImg.x, this.playerImg.y);
+    for (const x of this.doorGfx) {
+      const d = Math.hypot(pg.gx - x.cx, pg.gy - x.cy);
+      const target = d < 5.5 ? 1 : 0;
+      const cur = this.doorOpen[x.id] || 0;
+      const open = cur + (target - cur) * Math.min(1, dt * 5);
+      this.doorOpen[x.id] = open;
+      this.drawDoor(x.g, x.id, open);
+    }
+  }
+  // 门扇绘制（节点本地坐标，原点为门中心）
+  private drawDoor(g: Graphics, id: string, open: number) {
+    const w = DOOR_W[id], half = w / 2;
+    const thick = 0.35;
+    const ang = open * Math.PI / 2;
+    // 网格偏移 -> 本地坐标
+    const L = (dx: number, dy: number): Vec2 =>
+      new Vec2((dx - dy) * 32, -(dx + dy) * 16);
+    const poly = (pts: Vec2[], fill: Color, stroke: Color | null) => {
+      g.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+      g.close();
+      if (fill) { g.fillColor = fill; g.fill(); }
+      if (stroke) { g.strokeColor = stroke; g.lineWidth = 1.5; g.stroke(); }
+    };
+    g.clear();
+    // 门洞（开启后露出的室内暗部）
+    if (open > 0.02) {
+      const a = Math.min(1, open * 1.4);
+      const dark = new Color(32, 36, 44, Math.round(255 * a));
+      poly([
+        L(-half, 0), L(half, 0), L(half, -thick), L(-half, -thick)
+      ], dark, null);
+    }
+    // 左门扇（门轴在左，自由端向内）
+    const lc = half * Math.cos(ang), ls = half * Math.sin(ang);
+    poly([
+      L(-half, 0), L(-half + lc, -ls), L(-half + lc, -ls - thick), L(-half, -thick)
+    ], new Color(122, 158, 196, 235), new Color(28, 35, 48, 255));
+    // 右门扇（门轴在右，自由端向内）
+    poly([
+      L(half, 0), L(half - lc, -ls), L(half - lc, -ls - thick), L(half, -thick)
+    ], new Color(134, 168, 204, 235), new Color(28, 35, 48, 255));
   }
 
   // ---------- 建筑名标签（canvas 层，字号恒定；放大到阈值后显示） ----------
@@ -765,6 +827,7 @@ export class CampusBootstrap extends Component {
     }
 
     this.updateGates(dt);
+    this.updateDoors(dt);
     const lp = imageToLocal(this.playerImg.x, this.playerImg.y);
     this.player.setPosition(lp.x, lp.y, 0);
     this.updatePlayerFrame();
