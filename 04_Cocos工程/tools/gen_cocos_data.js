@@ -7,7 +7,9 @@ const OUT = path.join(__dirname, '..', 'assets', 'scripts', 'CampusData.ts');
 
 global.window = {};
 eval(fs.readFileSync(SRC + "/js/data.js", "utf8"));
+eval(fs.readFileSync(SRC + "/js/topdown_data.js", "utf8"));
 const D = window.CAMPUS_DATA;
+const TD = window.TOPDOWN_DATA;
 
 // 新坐标体系（web iso world）
 const gr = D.meta.gridRange;
@@ -48,6 +50,9 @@ lines.push("  grid: number[]; bbox: number[]; scale: number; paste: number[];");
 lines.push("  dw: number; dh: number; foot: number[]; depth: number; walkable: boolean;");
 lines.push("  desc: string; collider: number[] | null; colliders: number[][] | null; entry: number[] | null;");
 lines.push("}");
+lines.push("export interface CampusRoad {");
+lines.push("  w: number; paved: boolean; through: boolean; gpts: number[][];");
+lines.push("}");
 lines.push("export const META: CampusMeta = {");
 lines.push('  project: "北京化工大学昌平校区 · 等距像素数字校园",');
 lines.push("  ground: 'ground',");
@@ -80,6 +85,16 @@ D.buildings.forEach((b, i) => {
   lines.push("  }" + (i === D.buildings.length - 1 ? "" : ","));
 });
 
+lines.push("];");
+lines.push("");
+// 道路（用于 BFS 自动寻路的道路限制：只在道路上走）
+lines.push("export const ROADS: CampusRoad[] = [");
+TD.roads.forEach((rd, i) => {
+  lines.push("  {");
+  lines.push(`    "w": ${r(rd.w)}, "paved": ${rd.paved ? true : false}, "through": ${rd.through ? true : false},`);
+  lines.push(`    "gpts": ${matrix(rd.gpts.map(p => arr(p.slice())))}`);
+  lines.push("  }" + (i === TD.roads.length - 1 ? "" : ","));
+});
 lines.push("];");
 lines.push("");
 lines.push("export const GROUP_CN: Record<string, string> = {");

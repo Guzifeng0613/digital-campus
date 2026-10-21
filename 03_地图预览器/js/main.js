@@ -894,6 +894,36 @@
     return false;
   }
 
+  // 手动操控时的碰撞：只有建筑实体（collider/colliders）+ 围栏 + 闭合校门阻挡，
+  // 不限制走草坪/水体（道路限制只在自动寻路 BFS 时生效）。
+  const MANUAL_PAD = 0.65;
+  function buildingBlocked(gx, gy, pad) {
+    if (gx < GX0 || gx > GX1 || gy < GY0 || gy > GY1) return true;
+    const p = pad != null ? pad : MANUAL_PAD;
+    // 穿堂主干道（through）架空通道内放行，即使点落在主 collider 矩形内
+    const through = onThroughRoad(gx, gy, 0.4);
+    if (!through) {
+      for (const b of D.buildings) {
+        if (b.walkable) continue;
+        if (String(b.id).indexOf("GATE") === 0) continue;
+        if (b.collider) {
+          if (hitRect(gx, gy, { x: b.collider[0], y: b.collider[1], w: b.collider[2], h: b.collider[3] }, p)) return true;
+        } else if (!b.colliders) {
+          if (hitRect(gx, gy, visRect(b), p)) return true;
+        }
+        if (b.colliders) for (const c of b.colliders)
+          if (hitRect(gx, gy, { x: c[0], y: c[1], w: c[2], h: c[3] }, p)) return true;
+      }
+    }
+    for (const F of fences) if (fenceBlocked(gx, gy, F)) return true;
+    for (const g of campusGates) {
+      if (g.open > 0.5) continue;
+      const r = visRect(g.b);
+      if (hitRect(gx, gy, r, p)) return true;
+    }
+    return false;
+  }
+
   // ---------- 方格 BFS 寻路（8 方向，对角不穿墙角；步长 1 适配沿等距对角线的道路） ----------
   const NAV_PAD = 1.0;
   function navBlocked(gx, gy) { return blockedAt(gx, gy, NAV_PAD); }
@@ -1154,10 +1184,10 @@
       const s = Math.min(STEP, remain);
       const px = player.wx, py = player.wy;
       const nx = px + ux * s, ny = py + uy * s;
-      if (!blockedAt(nx, ny, PAD)) { player.wx = nx; player.wy = ny; }
+      if (!buildingBlocked(nx, ny)) { player.wx = nx; player.wy = ny; }
       else {
-        if (!blockedAt(nx, py, PAD)) player.wx = nx;
-        if (!blockedAt(player.wx, ny, PAD)) player.wy = ny;
+        if (!buildingBlocked(nx, py)) player.wx = nx;
+        if (!buildingBlocked(player.wx, ny)) player.wy = ny;
       }
       remain -= s;
     }
@@ -1431,7 +1461,8 @@
     gotoBuilding: id => { const b = D.buildings.find(x => x.id === id); if (b) navigateToBuilding(b); },
     gotoPoint: (gx, gy) => navigateToPoint(gx, gy),
     dbg: {
-      blockedAt, bfs, nearestOpen, openSpotsAround, fences, buildingScale, visRect, clickRect,
+      blockedAt, buildingBlocked, bfs, nearestOpen, openSpotsAround, fences, buildingScale, visRect, clickRect,
+      spritePxToGrid: (b, real, px, py) => spritePxToGrid(b, real, px, py),
       gateState: () => campusGates.map(g => ({ id: g.id, open: g.open, cx: g.cx, cy: g.cy })),
       doorState: () => buildingDoors.map(d => ({ id: d.id, open: d.open, cx: d.cx, cy: d.cy })),
       spriteInfo(id) {
