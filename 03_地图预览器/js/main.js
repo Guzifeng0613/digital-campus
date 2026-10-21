@@ -1394,6 +1394,17 @@
     gotoPoint: (gx, gy) => navigateToPoint(gx, gy),
     dbg: {
       blockedAt, bfs, nearestOpen, openSpotsAround, fences, buildingScale, visRect, clickRect,
+      gateState: () => campusGates.map(g => ({ id: g.id, open: g.open, cx: g.cx, cy: g.cy })),
+      spriteInfo(id) {
+        const b = D.buildings.find(x => x.id === id);
+        const real = spriteImgs[id];
+        if (!b || !real) return null;
+        const a = spriteAnchor(b, real);
+        const z = view.zoom;
+        const W = a.pxW * z, H = a.pxH * z;
+        const dx = w2sX(a.x) - a.ax * W, dy = w2sY(a.y) - a.ay * H;
+        return { real: [real.width, real.height], sc: a.sc, ax: a.ax, ay: a.ay, W, H, dx, dy };
+      },
       groundWalkable, drawNavOverlay, drawColliderOverlay, navInfo: () => ({ built: !!navMask, cells: navMask ? navMask.length : 0 }),
       decorCount: () => DECOR.length,
       decorList: () => DECOR.slice(),
@@ -1467,7 +1478,8 @@
           out.pxPoint = { x: +(dx + px / real.width * W).toFixed(1), y: +(dy + py / real.height * H).toFixed(1) };
         }
         return out;
-      }
+      },
+      exportGround: () => isoGround.toDataURL('image/png')
     }
   };
 
@@ -1550,6 +1562,7 @@
     ctx.imageSmoothingEnabled = true;
   }
   function drawBuilding(b) {
+    if (b._hidden) return;
     const z = view.zoom;
     const real = spriteImgs[b.id];
     if (real) {
