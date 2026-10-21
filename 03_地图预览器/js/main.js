@@ -387,7 +387,10 @@
       Promise.all([
         loadImg("img/topdown/sprites/" + id + "_towers.png?av=v20").then(im => spriteImgs[id + "_towers"] = im),
         loadImg("img/topdown/sprites/" + id + "_bars.png?av=v20").then(im => spriteImgs[id + "_bars"] = im)
-      ]))
+      ])),
+    // TEACH-1 深度拆分：WINGS（双D翼）+ FLOOR（庭院铺装）+ CORR（空中连廊）+ ARCH（大拱门），庭院可走且可见
+    ...["WINGS", "FLOOR", "CORR", "ARCH"].map(p =>
+      loadImg("img/topdown/sprites/TEACH-1_" + p + ".png?av=v22").then(im => spriteImgs["TEACH-1_" + p] = im))
   ]).then(() => { buildIsoGround(); buildMmGround(); buildFences(); buildSpriteTops(); buildNavMesh(); scatterGreenery(); });
 
   // ---------- D 批角色帧：48×64，锚点脚底中心 (24,64) ----------
@@ -1732,6 +1735,23 @@
     ctx.closePath(); ctx.stroke();
   }
 
+  // TEACH-1 深度拆分部件：WINGS / CORR / ARCH，与整图同锚点同尺寸，只画对应部件
+  function drawBuildingPart(b, part) {
+    if (b._hidden) return;
+    const real = spriteImgs["TEACH-1_" + part];
+    if (!real) return;
+    const full = spriteImgs["TEACH-1"];
+    const z = view.zoom;
+    // 用整图的几何（锚点/尺寸），保证部件与整图位置完全重合
+    const a = spriteAnchor(b, full);
+    const W = a.pxW * z, H = a.pxH * z;
+    const dx = w2sX(a.x) - a.ax * W;
+    const dy = w2sY(a.y) - a.ay * H;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(real, dx, dy, W, H);
+    ctx.imageSmoothingEnabled = true;
+  }
+
   // ---------- 绘制：等距菱形围栏 + 唯一入口滑门 ----------
 function drawFences(F) {
     const z = view.zoom;
@@ -2021,6 +2041,15 @@ function drawFences(F) {
     // 深度排序 drawList
     const drawList = [];
     for (const b of D.buildings) {
+      // TEACH-1 深度拆分：WINGS（双D翼，按grid南缘）+ FLOOR（庭院铺装，地面层）+ CORR（空中连廊，北）+ ARCH（大拱门，南）
+      // 玩家在庭院（y=238-253）中：FLOOR 在脚下、WINGS 在两侧、CORR 在北、ARCH 在南，小人可见
+      if (b.id === "TEACH-1" && spriteImgs["TEACH-1_WINGS"]) {
+        drawList.push({ kind: "bp", depth: (b.grid[1] + b.grid[3]) * 1000 + (b.grid[0] + b.grid[2]), b, part: "WINGS" });
+        drawList.push({ kind: "bp", depth: 235.5 * 1000 + 92, b, part: "FLOOR" });
+        drawList.push({ kind: "bp", depth: 236.2 * 1000 + 92, b, part: "CORR" });
+        drawList.push({ kind: "bp", depth: 253.2 * 1000 + 92, b, part: "ARCH" });
+        continue;
+      }
       // 场地类（操场）sprite 主体是平面跑道/草地，按地面层（北角）深度：玩家在跑道/草坪任意位置都可见；立体看台在边缘不影响
       let depth;
       if (b.cat === "field") depth = (b.grid[1] - 2) * 1000 + (b.grid[0] + b.grid[2] / 2);
@@ -2034,6 +2063,7 @@ function drawFences(F) {
     drawList.sort((a, b) => a.depth - b.depth);
     for (const it of drawList) {
       if (it.kind === "b") drawBuilding(it.b);
+      else if (it.kind === "bp") drawBuildingPart(it.b, it.part);
       else if (it.kind === "f") drawFences(it.F);
       else if (it.kind === "d") drawDecor(it.d);
       else if (it.kind === "p") drawPlayer();

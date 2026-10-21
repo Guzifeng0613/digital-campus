@@ -43,6 +43,8 @@ export class CampusBootstrap extends Component {
   private running = false;
   private runLock = false;
   private buildingNodes: { b: CampusBuilding; node: Node }[] = [];
+  // TEACH-1 深度拆分部件（独立排序节点）：WINGS / FLOOR / CORR / ARCH
+  private partNodes: { depth: number; node: Node }[] = [];
 
   // 校门开合
   private gateOpen: GateOpen = {};
@@ -209,6 +211,11 @@ export class CampusBootstrap extends Component {
       node.getComponent(Sprite)!.sizeMode = Sprite.SizeMode.CUSTOM;
       this.content.addChild(node);
       this.buildingNodes.push({ b, node });
+      // TEACH-1 深度拆分：整图节点隐藏（仅留作信息卡配图），改用 4 个独立排序部件
+      if (b.id === 'TEACH-1') {
+        node.active = false;
+        this.buildTeachParts(b, geom);
+      }
       // 建筑门（门扇绕外侧门轴向内打开）
       if (DOOR_W[b.id] != null) {
         const c = buildingDoorCenter(b, realW, realH);
@@ -265,6 +272,31 @@ export class CampusBootstrap extends Component {
     this.gateBars.push({ id: b.id, pivot });
     this.gateOpen[b.id] = 0;
   }
+  // ---------- TEACH-1 深度拆分：WINGS / FLOOR / CORR / ARCH，与整图同尺寸同位置，按部件深度排序 ----------
+  private buildTeachParts(b: CampusBuilding, geom: { W: number; H: number; lx: number; ly: number }) {
+    // 部件（part, 深度=gx+gy 对角）：FLOOR 庭院铺装在脚下、CORR 空中连廊在北、ARCH 大拱门在南、WINGS 双D翼
+    const parts: [string, number][] = [
+      ['WINGS', 328.65], ['FLOOR', 327.5], ['CORR', 328.2], ['ARCH', 345.2]
+    ];
+    parts.forEach(([p, depth]) => {
+      this.loadSF(b.res + '_' + p).then(tsf => {
+        tsf.texture.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.POINT);
+        const sf = new SpriteFrame();
+        sf.texture = tsf.texture;
+        sf.rect = new Rect(0, 0, tsf.texture.width, tsf.texture.height);
+        const node = this.makeSpriteNode(sf, 'TEACH-1_' + p);
+        const ut = node.getComponent(UITransform)!;
+        ut.setContentSize(geom.W, geom.H);
+        ut.setAnchorPoint(0, 1);
+        node.setPosition(geom.lx, geom.ly, 0);
+        node.getComponent(Sprite)!.sizeMode = Sprite.SizeMode.CUSTOM;
+        this.content.addChild(node);
+        this.partNodes.push({ depth, node });
+        this.sortSprites();
+      }).catch((err) => console.error('[数字校园] 一教部件加载失败：' + p, err));
+    });
+  }
+
   // 角色靠近校门时开合（靠近目标点则 open→1，否则→0）
   private updateGates(dt: number) {
     const pg = imageToGrid(this.playerImg.x, this.playerImg.y);
@@ -601,7 +633,11 @@ export class CampusBootstrap extends Component {
 
   // ---------- 深度排序（地面→路径→建筑/角色） ----------
   private sortSprites() {
-    const arr = this.buildingNodes.map(x => ({ depth: x.b.depth, node: x.node }));
+    const arr = this.buildingNodes
+      .filter(x => x.node.active)
+      .map(x => ({ depth: x.b.depth, node: x.node }));
+    // TEACH-1 深度拆分部件
+    for (const p of this.partNodes) arr.push({ depth: p.depth, node: p.node });
     if (this.player) {
       const gi = imageToGrid(this.playerImg.x, this.playerImg.y);
       arr.push({ depth: gi.gx + gi.gy, node: this.player });
