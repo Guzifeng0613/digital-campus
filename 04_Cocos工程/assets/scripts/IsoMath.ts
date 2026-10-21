@@ -98,6 +98,34 @@ export interface SpriteGeometry {
   W: number; H: number;          // 缩放后世界宽高
   lx: number; ly: number;        // 节点（左上锚点）在 content 的本地坐标
 }
+
+// ---------- 建筑门（门扇绕外侧门轴向内打开）：TEACH-1 为大拱门穿堂，不设门 ----------
+export const DOOR_W: Record<string, number> = {
+  "LIB": 3.6, "ACT": 4.2, "CAN-YULAN": 3.6, "CAN-ZIZHU": 3.2, "GYM": 5.0,
+  "TEACH-2": 3.6, "WENLI": 3.6, "ENG-TRAIN": 3.4, "LAB-TECH": 4.0
+};
+const DOOR_YF: Record<string, number> = {
+  "LIB": 0.83, "ACT": 0.80, "CAN-YULAN": 0.67, "CAN-ZIZHU": 0.72, "GYM": 0.745,
+  "TEACH-2": 0.90, "WENLI": 0.834, "ENG-TRAIN": 0.74, "LAB-TECH": 0.846
+};
+const DOOR_XF: Record<string, number> = {
+  "CAN-ZIZHU": 0.31, "GYM": 0.73, "TEACH-2": 0.47, "WENLI": 0.625, "ENG-TRAIN": 0.31
+};
+// 门中心（网格）：由 sprite 像素点反算
+export function buildingDoorCenter(b: CampusBuilding, realW: number, realH: number): { gx: number; gy: number } {
+  const [fx, fy, fw, fh] = b.grid;
+  const k = ISO_K[b.id] != null ? ISO_K[b.id] : 1.1;
+  const sc = (fw + fh) * TW / 2 * k / realW;
+  const W = realW * sc, H = realH * sc;
+  const ax = ANCHOR_AX[b.id] != null ? ANCHOR_AX[b.id] : 0.5;
+  const ay = ANCHOR_AY[b.id] != null ? ANCHOR_AY[b.id] : 0.95;
+  const south = gridToImage(fx + fw, fy + fh);
+  const topLeftX = south.x - ax * W, topLeftY = south.y - ay * H;
+  const xf = DOOR_XF[b.id] != null ? DOOR_XF[b.id] : 0.5;
+  const yf = DOOR_YF[b.id] != null ? DOOR_YF[b.id] : 0.85;
+  const px = realW * xf, py = realH * yf;
+  return imageToGrid(topLeftX + px * sc, topLeftY + py * sc);
+}
 export function spriteGeometry(b: CampusBuilding, realW: number, realH: number): SpriteGeometry {
   const [fx, fy, fw, fh] = b.grid;
   const k = ISO_K[b.id] != null ? ISO_K[b.id] : 1.1;
