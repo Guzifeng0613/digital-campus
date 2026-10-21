@@ -1,5 +1,5 @@
 // 等距坐标数学：网格 <-> 图像世界 <-> Cocos 本地坐标；碰撞检测（含多部件/校门开合）；sprite 几何。
-import { META, CampusBuilding } from './CampusData';
+import { META, CampusBuilding, ROADS, CampusRoad } from './CampusData';
 import { Vec2 } from 'cc';
 
 const OX = META.origin[0], OY = META.origin[1];
@@ -146,21 +146,121 @@ const NAV_STEP = 2;
 const MOVES = [[2,0],[-2,0],[0,2],[0,-2],[2,2],[2,-2],[-2,2],[-2,-2]];
 function round2(n: number): number { return Math.round(n / 2) * 2; }
 
+// 道路走廊：点是否落在道路（含穿堂 through）范围内。
+// 道路半幅（网格单位）= w * 32 * 1.15 / 2 / 35.8（一格网格沿 gx 轴的等距世界长度）。
+const GRID_WORLD_LEN = Math.hypot(SX, SY);
+function onRoad(gx: number, gy: number, pad: number): boolean {
+  for (const rd of ROADS) {
+    const p = rd.gpts;
+    if (!p || p.length < 2) continue;
+    const halfW = (rd.w || 6) * SX * 1.15 / 2 / GRID_WORLD_LEN + pad;
+    for (let i = 0; i < p.length - 1; i++) {
+      const ax = p[i][0], ay = p[i][1], bx = p[i + 1][0], by = p[i + 1][1];
+      const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+      let t = L2 ? ((gx - ax) * dx + (gy - ay) * dy) / L2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      if (Math.hypot(gx - (ax + dx * t), gy - (ay + dy * t)) < halfW) return true;
+    }
+  }
+  return false;
+}
+
+// ---------- 操场围栏（屏幕椭圆，唯一门缺口；BFS 只能从门进） ----------
+const FIELD_CFG: Record<string, { sRx: number; sRy: number; sAng: number; gatePhi: number }> = {
+  "FIELD-N": { sRx: 610, sRy: 282, sAng: -0.346, gatePhi: 1.886 },
+  "FIELD-W": { sRx: 525, sRy: 250, sAng: -0.353, gatePhi: 1.876 }
+};
+const GATE_HALF_F = 3.3;
+export interface FieldFence {
+  id: string; ccx: number; ccy: number; sRx: number; sRy: number; sAng: number;
+  phi: number; gcx: number; gcy: number; gapHalf: number;
+}
+function fieldFsc(b: CampusBuilding): number {
+  const [, , fw, fh] = b.grid;
+  const k = ISO_K[b.id] != null ? ISO_K[b.id] : 1.1;
+  // 操场 sprite 实际宽度 1600
+  return (fw + fh) * TW / 2 * k / 1600;
+}
+// 构建操场围栏（buildings 由调用方传入；与 web buildFences 一致）
+export function buildFieldFences(buildings: CampusBuilding[]): FieldFence[] {
+  const out: FieldFence[] = [];
+  for (const id of Object.keys(FIELD_CFG)) {
+    const cfg = FIELD_CFG[id], b = buildings.find(x => x.id === id);
+    if (!b) continue;
+    const [fx, fy, fw, fh] = b.grid;
+    const ccx = fx + fw / 2, ccy = fy + fh / 2;
+    const fsc = fieldFsc(b);
+    const sRx = cfg.sRx * fsc, sRy = cfg.sRy * fsc, sAng = cfg.sAng;
+    const phi = cfg.gatePhi;
+    const aG = phi - sAng;
+    const ex = sRx * Math.cos(aG), ey = sRy * Math.sin(aG);
+    const csx = (ccx - ccy) * SX, csy = (ccx + ccy) * SY;
+    const msx = csx + ex * Math.cos(sAng) - ey * Math.sin(sAng);
+    const msy = csy + ex * Math.sin(sAng) + ey * Math.cos(sAng);
+    const gcx = (msx / SX + msy / SY) / 2, gcy = (msy / SY - msx / SX) / 2;
+    const gR = Math.hypot(ex, ey);
+    const gapHalf = Math.max(0.16, (GATE_HALF_F * 22) / gR);
+    out.push({ id, ccx, ccy, sRx, sRy, sAng, phi, gcx, gcy, gapHalf });
+  }
+  return out;
+}
+function angDiff(a: number, b: number): number {
+  let d = a - b;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return d;
+}
+// 屏幕椭圆归一化：返回 d（边界=1）与参数角 alpha
+function ellNorm(F: FieldFence, gx: number, gy: number): { d: number; alpha: number } {
+  const sAng = F.sAng, cosA = Math.cos(sAng), sinA = Math.sin(sAng);
+  const dx = (gx - gy) * SX - (F.ccx - F.ccy) * SX;
+  const dy = (gx + gy) * SY - (F.ccx + F.ccy) * SY;
+  const lx = dx * cosA + dy * sinA, ly = -dx * sinA + dy * cosA;
+  return { d: Math.hypot(lx / F.sRx, ly / F.sRy), alpha: Math.atan2(ly / F.sRy, lx / F.sRx) };
+}
+function insideField(F: FieldFence, gx: number, gy: number): boolean {
+  return ellNorm(F, gx, gy).d < 0.92;
+}
+function fenceBlocked(F: FieldFence, gx: number, gy: number): boolean {
+  const { d, alpha } = ellNorm(F, gx, gy);
+  if (d > 1.07 || d < 0.93) return false;
+  if (Math.abs(angDiff(alpha, F.phi - F.sAng)) < F.gapHalf) return false;
+  return true;
+}
+// 门通道：缺口处从场内（r≈0.2）延伸到场外（r≈2.1），是唯一可进出的通道
+function gateChannel(F: FieldFence, gx: number, gy: number): boolean {
+  const { d, alpha } = ellNorm(F, gx, gy);
+  if (d < 0.85 || d > 2.1) return false;
+  return Math.abs(angDiff(alpha, F.phi - F.sAng)) < F.gapHalf;
+}
+
+// 自动寻路通行：道路 或 操场内部（仅从门缺口进入）
 export function navBlocked(gx: number, gy: number, buildings: CampusBuilding[],
-                           gateOpen: GateOpen | null = null): boolean {
+                           gateOpen: GateOpen | null = null, fences: FieldFence[] | null = null): boolean {
   if (gx < GX0 || gx > GX1 || gy < GY0 || gy > GY1) return true;
+  // 围栏环（除门缺口外）阻挡
+  const fList = fences || buildFieldFences(buildings);
+  for (const F of fList) if (fenceBlocked(F, gx, gy)) return true;
+  // 只在道路、操场内部或门通道可走（草地/水体不可走）
+  let passable = onRoad(gx, gy, 0.0);
+  if (!passable) for (const F of fList) {
+    if (insideField(F, gx, gy) || gateChannel(F, gx, gy)) { passable = true; break; }
+  }
+  if (!passable) return true;
   for (const b of buildings) if (buildingBlocks(b, gx, gy, NAV_PAD, gateOpen)) return true;
   return false;
 }
-function uvBlocked(u: number, v: number, buildings: CampusBuilding[], gateOpen: GateOpen | null): boolean {
-  return navBlocked((u + v) / 2, (u - v) / 2, buildings, gateOpen);
+function uvBlocked(u: number, v: number, buildings: CampusBuilding[], gateOpen: GateOpen | null,
+                   fences: FieldFence[] | null): boolean {
+  return navBlocked((u + v) / 2, (u - v) / 2, buildings, gateOpen, fences);
 }
 // BFS：起点/终点为网格坐标，返回网格路径（含终点），不可达返回 null
 export function findPath(sg: {gx:number;gy:number}, tg: {gx:number;gy:number},
                          buildings: CampusBuilding[], gateOpen: GateOpen | null = null): {gx:number;gy:number}[] | null {
+  const fences = buildFieldFences(buildings);
   const U0 = round2(sg.gx + sg.gy), V0 = round2(sg.gx - sg.gy);
   const U1 = round2(tg.gx + tg.gy), V1 = round2(tg.gx - tg.gy);
-  if (uvBlocked(U1, V1, buildings, gateOpen)) return null;
+  if (uvBlocked(U1, V1, buildings, gateOpen, fences)) return null;
   const key = (u: number, v: number) => u + "," + v;
   const queue: number[][] = [[U0, V0]]; let head = 0;
   const prev = new Map<string, number[]>();
@@ -171,8 +271,8 @@ export function findPath(sg: {gx:number;gy:number}, tg: {gx:number;gy:number},
     if (u === U1 && v === V1) { found = true; break; }
     for (const [du, dv] of MOVES) {
       const nu = u + du, nv = v + dv;
-      if (uvBlocked(nu, nv, buildings, gateOpen)) continue;
-      if (du && dv && (uvBlocked(u + du, v, buildings, gateOpen) || uvBlocked(u, v + dv, buildings, gateOpen))) continue;
+      if (uvBlocked(nu, nv, buildings, gateOpen, fences)) continue;
+      if (du && dv && (uvBlocked(u + du, v, buildings, gateOpen, fences) || uvBlocked(u, v + dv, buildings, gateOpen, fences))) continue;
       const kk = key(nu, nv);
       if (prev.has(kk)) continue;
       prev.set(kk, [u, v]);
