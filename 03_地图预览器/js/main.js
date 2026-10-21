@@ -600,7 +600,7 @@
       if (String(b.id).indexOf("GATE") === 0) continue;
       if (b.collider) {
         navDiamondWorld(navG, b.collider[0], b.collider[1], b.collider[2], b.collider[3], true);
-      } else {
+      } else if (!b.colliders) {
         const r = visRect(b);
         const sx = COL_SOUTH[b.id] || 0;
         navDiamondWorld(navG, r.x, r.y, r.w, r.h + sx, true);
@@ -818,6 +818,26 @@
       if (!navMask[ny * NAV_NC + nx]) continue;
       const wx = nx / NAV_S + WORLD_MINX, wy = ny / NAV_S + WORLD_MINY;
       g.fillRect(w2sX(wx) - 1, w2sY(wy) - 1, 2, 2);
+    }
+  }
+  // 碰撞箱可视化：在固定覆盖层上把每个建筑的 collider/colliders 画成红色菱形
+  function drawColliderOverlay() {
+    const old = document.getElementById('colbox'); if (old) old.remove();
+    const c = document.createElement('canvas'); c.id = 'colbox'; c.width = innerWidth; c.height = innerHeight;
+    c.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9999';
+    document.body.appendChild(c);
+    const g = c.getContext('2d');
+    const drawDiamond = (x, y, w, h, col) => {
+      const d = isoDiamond(x, y, w, h);
+      g.strokeStyle = col; g.lineWidth = 2; g.beginPath();
+      d.forEach((q, i) => { const sx = w2sX(q.x), sy = w2sY(q.y); i ? g.lineTo(sx, sy) : g.moveTo(sx, sy); });
+      g.closePath(); g.stroke();
+    };
+    for (const b of D.buildings) {
+      if (b.collider) drawDiamond(b.collider[0], b.collider[1], b.collider[2], b.collider[3], 'rgba(255,40,40,0.9)');
+      if (b.colliders) for (const cc of b.colliders) drawDiamond(cc[0], cc[1], cc[2], cc[3], 'rgba(255,170,0,0.9)');
+      // grid footprint in green
+      drawDiamond(b.grid[0], b.grid[1], b.grid[2], b.grid[3], 'rgba(40,220,90,0.5)');
     }
   }
   // ---------- 东西校门伸缩门（闭合阻挡 / 接近收拢放行） ----------
@@ -1374,7 +1394,7 @@
     gotoPoint: (gx, gy) => navigateToPoint(gx, gy),
     dbg: {
       blockedAt, bfs, nearestOpen, openSpotsAround, fences, buildingScale, visRect, clickRect,
-      groundWalkable, drawNavOverlay, navInfo: () => ({ built: !!navMask, cells: navMask ? navMask.length : 0 }),
+      groundWalkable, drawNavOverlay, drawColliderOverlay, navInfo: () => ({ built: !!navMask, cells: navMask ? navMask.length : 0 }),
       decorCount: () => DECOR.length,
       decorList: () => DECOR.slice(),
       navThumb(targetId) {
