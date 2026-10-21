@@ -274,9 +274,11 @@ export class CampusBootstrap extends Component {
   }
   // ---------- TEACH-1 深度拆分：WINGS / FLOOR / CORR / ARCH，与整图同尺寸同位置，按部件深度排序 ----------
   private buildTeachParts(b: CampusBuilding, geom: { W: number; H: number; lx: number; ly: number }) {
-    // 部件（part, 深度=gx+gy 对角）：FLOOR 庭院铺装在脚下、CORR 空中连廊在北、ARCH 大拱门在南、WINGS 双D翼
+    // 部件（part, 深度=gx+gy 对角）：
+    //  FLOOR 庭院地面（北缘，先于玩家）；CORR 空中连廊（盖连廊下、不盖南侧草坪）；
+    //  ARCH 大拱门（盖拱门内）；WINGS 双D翼（南缘，玩家在庭院中不被覆盖）
     const parts: [string, number][] = [
-      ['WINGS', 328.65], ['FLOOR', 327.5], ['CORR', 328.2], ['ARCH', 345.2]
+      ['WINGS', 362], ['FLOOR', 308], ['CORR', 316], ['ARCH', 338]
     ];
     parts.forEach(([p, depth]) => {
       this.loadSF(b.res + '_' + p).then(tsf => {

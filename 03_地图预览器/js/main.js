@@ -2045,8 +2045,8 @@ function drawFences(F) {
       // 玩家在庭院（y=238-253）中：FLOOR 在脚下、WINGS 在两侧、CORR 在北、ARCH 在南，小人可见
       if (b.id === "TEACH-1" && spriteImgs["TEACH-1_WINGS"]) {
         drawList.push({ kind: "bp", depth: (b.grid[1] + b.grid[3]) * 1000 + (b.grid[0] + b.grid[2]), b, part: "WINGS" });
-        drawList.push({ kind: "bp", depth: 235.5 * 1000 + 92, b, part: "FLOOR" });
-        drawList.push({ kind: "bp", depth: 236.2 * 1000 + 92, b, part: "CORR" });
+        drawList.push({ kind: "bp", depth: 230 * 1000 + 92, b, part: "FLOOR" });
+        drawList.push({ kind: "bp", depth: 236 * 1000 + 92, b, part: "CORR" });
         drawList.push({ kind: "bp", depth: 253.2 * 1000 + 92, b, part: "ARCH" });
         continue;
       }

@@ -49,11 +49,15 @@ function buildingBlocks(b: CampusBuilding, gx: number, gy: number, pad: number, 
   }
   return false;
 }
-// 某网格点是否被实体建筑阻挡（操场/山体可进入）
+// 某网格点是否被实体建筑阻挡（操场/山体可进入）。
+// 手动操控：穿堂架空通道（through）内放行，即使点落在建筑 collider 矩形内。
 export function isBlocked(gx: number, gy: number, buildings: CampusBuilding[],
                          gateOpen: GateOpen | null = null): boolean {
   if (gx < GX0 || gx > GX1 || gy < GY0 || gy > GY1) return true;
-  for (const b of buildings) if (buildingBlocks(b, gx, gy, COLLIDE_PAD, gateOpen)) return true;
+  const through = onThroughRoad(gx, gy, 0.4);
+  if (!through) {
+    for (const b of buildings) if (buildingBlocks(b, gx, gy, COLLIDE_PAD, gateOpen)) return true;
+  }
   return false;
 }
 // 让整校园菱形适配视图（viewW/viewH 为可视像素），返回缩放
@@ -149,11 +153,15 @@ function round2(n: number): number { return Math.round(n / 2) * 2; }
 // 道路走廊：点是否落在道路（含穿堂 through）范围内。
 // 道路半幅（网格单位）= w * 32 * 1.15 / 2 / 35.8（一格网格沿 gx 轴的等距世界长度）。
 const GRID_WORLD_LEN = Math.hypot(SX, SY);
-function onRoad(gx: number, gy: number, pad: number): boolean {
+function roadHalf(rd: CampusRoad, pad: number): number {
+  return (rd.w || 6) * SX * 1.15 / 2 / GRID_WORLD_LEN + pad;
+}
+function onRoadList(gx: number, gy: number, pad: number, throughOnly: boolean): boolean {
   for (const rd of ROADS) {
+    if (throughOnly && !rd.through) continue;
     const p = rd.gpts;
     if (!p || p.length < 2) continue;
-    const halfW = (rd.w || 6) * SX * 1.15 / 2 / GRID_WORLD_LEN + pad;
+    const halfW = roadHalf(rd, pad);
     for (let i = 0; i < p.length - 1; i++) {
       const ax = p[i][0], ay = p[i][1], bx = p[i + 1][0], by = p[i + 1][1];
       const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
@@ -163,6 +171,13 @@ function onRoad(gx: number, gy: number, pad: number): boolean {
     }
   }
   return false;
+}
+function onRoad(gx: number, gy: number, pad: number): boolean {
+  return onRoadList(gx, gy, pad, false);
+}
+// 穿堂主干道（through）架空通道：手动操控时即使点落在建筑 collider 矩形内也放行
+export function onThroughRoad(gx: number, gy: number, pad: number): boolean {
+  return onRoadList(gx, gy, pad, true);
 }
 
 // ---------- 操场围栏（屏幕椭圆，唯一门缺口；BFS 只能从门进） ----------
