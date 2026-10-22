@@ -35,6 +35,8 @@ export class CampusBootstrap extends Component {
 
   private zoom = 0.1;
   private follow = false;
+  // 开场动画（镜头从全校俯瞰缓推到出生点）
+  private intro: { t: number; dur: number; z0: number; z1: number; dcx: number; dcy: number } | null = null;
   private readonly keys = new Set<number>();
   private playerImg = new Vec2();          // 角色脚点（图像世界坐标）
   private phase = 0;
@@ -92,7 +94,7 @@ export class CampusBootstrap extends Component {
       await this.buildMap();
       await this.loadPlayerFrames();
       this.buildPlayer();
-      this.centerView();
+      this.startIntro();
       this.bindInput();
       console.log('%c[数字校园] 构建完成：共 ' + this.buildingNodes.length +
         ' 栋建筑。WASD 移动 / 滚轮缩放 / 拖拽平移 / 点击建筑查看信息', 'color:#2ecc71');
@@ -704,9 +706,45 @@ export class CampusBootstrap extends Component {
     this.content.setPosition(-dc.x * this.zoom, -dc.y * this.zoom, 0);
   }
 
+  // ---------- 开场动画：镜头从全校俯瞰缓推到出生点 ----------
+  private easeInOut(t: number) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+  private startIntro() {
+    const vs = this.viewSize();
+    const z1 = fitZoom(vs.x, vs.y);
+    const portrait = vs.y > vs.x;
+    const z0 = z1 * (portrait ? 0.82 : 0.62);
+    const [dx0, dy0, dx1, dy1] = META.diamond;
+    const dc = imageToLocal((dx0 + dx1) / 2, (dy0 + dy1) / 2);
+    this.intro = { t: 0, dur: 3.4, z0, z1, dcx: dc.x, dcy: dc.y };
+    this.zoom = z0;
+    this.content.setScale(z0, z0, 1);
+    this.content.setPosition(-dc.x * z0, -dc.y * z0, 0);
+  }
+  private skipIntro() {
+    if (!this.intro) return;
+    const it = this.intro;
+    this.intro = null;
+    this.zoom = it.z1;
+    this.content.setScale(it.z1, it.z1, 1);
+    this.content.setPosition(-it.dcx * it.z1, -it.dcy * it.z1, 0);
+  }
+  private updateIntro(dt: number) {
+    const it = this.intro;
+    if (!it) return;
+    it.t += dt;
+    const k = Math.min(1, it.t / it.dur);
+    const e = this.easeInOut(k);
+    const z = it.z0 + (it.z1 - it.z0) * e;
+    this.zoom = z;
+    this.content.setScale(z, z, 1);
+    this.content.setPosition(-it.dcx * z, -it.dcy * z, 0);
+    if (k >= 1) this.intro = null;
+  }
+
   // ---------- 输入 ----------
   private bindInput() {
     input.on(Input.EventType.KEY_DOWN, (e: EventKeyboard) => {
+      if (this.intro) { this.skipIntro(); return; }
       this.keys.add(e.keyCode);
       if (e.keyCode === KeyCode.KEY_W || e.keyCode === KeyCode.ARROW_UP ||
           e.keyCode === KeyCode.KEY_S || e.keyCode === KeyCode.ARROW_DOWN ||
@@ -722,6 +760,7 @@ export class CampusBootstrap extends Component {
   }
 
   private onTouchStart(e: EventTouch) {
+    if (this.intro) { this.skipIntro(); return; }
     const p = e.getUILocation();
     this.dragging = true; this.moved = false;
     this.lastTouch.set(p.x, p.y); this.touchStart.set(p.x, p.y);
@@ -745,6 +784,7 @@ export class CampusBootstrap extends Component {
     }
   }
   private onWheel(e: EventMouse) {
+    if (this.intro) { this.skipIntro(); return; }
     const p = e.getUILocation();
     const f = e.getScrollY() > 0 ? 1.12 : 1 / 1.12;
     this.zoomAt(p.x, p.y, f);
@@ -837,6 +877,16 @@ export class CampusBootstrap extends Component {
   update(dt: number) {
     if (!this.player) return;
     this.elapsed += dt;
+    // 开场动画期间：只推进镜头，不响应移动/门/寻路
+    if (this.intro) {
+      this.updateIntro(dt);
+      const lp0 = imageToLocal(this.playerImg.x, this.playerImg.y);
+      this.player.setPosition(lp0.x, lp0.y, 0);
+      this.updatePlayerFrame();
+      this.updateMinimap();
+      this.sortSprites();
+      return;
+    }
     let dx = 0, dy = 0;
     if (this.keys.has(KeyCode.KEY_W) || this.keys.has(KeyCode.ARROW_UP)) dy -= 1;
     if (this.keys.has(KeyCode.KEY_S) || this.keys.has(KeyCode.ARROW_DOWN)) dy += 1;
