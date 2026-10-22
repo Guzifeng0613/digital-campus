@@ -41,6 +41,58 @@
   // ---------- 视图状态 ----------
   const view = { x: 0, y: 0, zoom: 0.065 };
   let follow = false;
+  // ---------- 开场动画（载入后镜头从全校俯瞰缓推到出生点，期间锁定输入） ----------
+  let intro = null;   // {t, dur, x0,y0,z0,x1,y1,z1}
+  const easeInOut = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  function startIntro() {
+    // 起点：全校俯瞰（竖屏少缩一点让校园更饱满，横屏更远突出全貌）
+    const portrait = window.innerHeight > window.innerWidth;
+    const z0 = fitZoom() * (portrait ? 0.82 : 0.62);
+    const x0 = window.innerWidth / 2 - WORLD_CX * z0;
+    // 竖屏标题在上，校园整体略上移平衡；横屏居中
+    const y0 = (portrait ? window.innerHeight * 0.46 : window.innerHeight / 2) - WORLD_CY * z0;
+    // 终点：出生点（玩家）视角
+    centerView();
+    const x1 = view.x, y1 = view.y, z1 = view.zoom;
+    view.zoom = z0; view.x = x0; view.y = y0;
+    intro = { t: 0, dur: 3.4, x0, y0, z0, x1, y1, z1 };
+    // 标题动画
+    const t = document.getElementById("title");
+    if (t) { t.classList.add("intro-title"); }
+    const ov = document.getElementById("introOverlay");
+    if (ov) ov.classList.add("show");
+    document.body.classList.add("introing");
+  }
+  function skipIntro() {
+    if (!intro) return;
+    const end = { x: intro.x1, y: intro.y1, z: intro.z1 };
+    intro = null;
+    view.x = end.x; view.y = end.y; view.zoom = end.z;
+    document.body.classList.remove("introing");
+    const ov = document.getElementById("introOverlay");
+    if (ov) ov.classList.remove("show");
+    const t = document.getElementById("title");
+    if (t) t.classList.remove("intro-title");
+  }
+  // 开场期间点任意元素（含 HUD/摇杆）都跳过——用捕获阶段统一处理
+  document.addEventListener("pointerdown", () => { if (intro) skipIntro(); }, true);
+  function updateIntro(dt) {
+    if (!intro) return;
+    intro.t += dt;
+    const k = Math.min(1, intro.t / intro.dur);
+    const e = easeInOut(k);
+    view.zoom = intro.z0 + (intro.z1 - intro.z0) * e;
+    view.x = intro.x0 + (intro.x1 - intro.x0) * e;
+    view.y = intro.y0 + (intro.y1 - intro.y0) * e;
+    if (k >= 1) {
+      intro = null;
+      document.body.classList.remove("introing");
+      const ov = document.getElementById("introOverlay");
+      if (ov) { setTimeout(() => ov.classList.remove("show"), 250); }
+      const t = document.getElementById("title");
+      if (t) setTimeout(() => t.classList.remove("intro-title"), 400);
+    }
+  }
   function fitZoom() {
     // 建筑放大后向北(上)扩展，多留一点纵向留白避免边缘被裁
     return Math.min(window.innerWidth * 0.92 / WORLD_W, window.innerHeight * 0.90 / WORLD_H);
@@ -1316,6 +1368,7 @@
 
   // ---------- 输入 ----------
   window.addEventListener("keydown", e => {
+    if (intro) { skipIntro(); return; }
     const k = e.key.toLowerCase();
     keys[k] = true;
     if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) e.preventDefault();
@@ -1346,6 +1399,7 @@
     joyKnob.style.transform = "translate(0px,0px)";
   }
   joyZone.addEventListener("pointerdown", e => {
+    if (intro) { skipIntro(); return; }
     e.preventDefault(); joyZone.setPointerCapture(e.pointerId);
     joyId = e.pointerId;
     const r = joyBase.getBoundingClientRect();
@@ -1361,6 +1415,7 @@
   let pinch = null, multiTouch = false;
   const ptDist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   canvas.addEventListener("pointerdown", e => {
+    if (intro) { skipIntro(); return; }
     canvas.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 1) {
@@ -1407,6 +1462,7 @@
   canvas.addEventListener("pointercancel", endPointer);
   canvas.addEventListener("wheel", e => {
     e.preventDefault();
+    if (intro) return;
     zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 1 / 1.12);
   }, { passive: false });
   function zoomAt(cx, cy, f) {
@@ -2183,8 +2239,12 @@ function drawFences(F) {
   let last = performance.now();
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
-    updatePlayer(dt);
-    updateGates(dt);
+    if (intro) {
+      updateIntro(dt);
+    } else {
+      updatePlayer(dt);
+      updateGates(dt);
+    }
     if (follow) {
       view.x += window.innerWidth * 0.5 - w2sX(isoX(player.wx, player.wy));
       view.y += window.innerHeight * 0.62 - w2sY(isoY(player.wx, player.wy));
@@ -2215,5 +2275,7 @@ function drawFences(F) {
     if (ld) ld.style.opacity = "0";
     setTimeout(() => { if (ld) ld.style.display = "none"; }, 320);
     requestAnimationFrame(frame);
+    // 开场动画（稍延迟，等 loading 淡出）
+    setTimeout(startIntro, 350);
   });
 })();
