@@ -6,7 +6,7 @@ import {
 import { META, BUILDINGS, GROUP_CN, CampusBuilding } from './CampusData';
 import {
   GROUND_W, GROUND_H, gridToLocal, gridToImage, imageToLocal, localToImage, imageToGrid,
-  isBlocked, fitZoom, spriteGeometry, GATE_GEOM, buildingDoorCenter, DOOR_W,
+  isBlocked, fitZoom, spriteGeometry, GATE_GEOM, buildingDoorCenter, DOOR_W, DOOR_H,
   findPath, nearestOpenGrid, pathToBuilding, GateOpen
 } from './IsoMath';
 
@@ -328,14 +328,15 @@ export class CampusBootstrap extends Component {
       this.drawDoor(x.g, x.id, open);
     }
   }
-  // 门扇绘制（节点本地坐标，原点为门中心）
+  // 门扇绘制（节点本地坐标，原点为门中心，竖直门板从地面立起）
   private drawDoor(g: Graphics, id: string, open: number) {
     const w = DOOR_W[id], half = w / 2;
-    const thick = 0.35;
+    const thick = 0.3;
     const ang = open * Math.PI / 2;
-    // 网格偏移 -> 本地坐标
-    const L = (dx: number, dy: number): Vec2 =>
-      new Vec2((dx - dy) * 32, -(dx + dy) * 16);
+    const H = DOOR_H[id] || 4.0;
+    // 3D 网格偏移 (dx,dy,dz) -> 本地坐标
+    const L = (dx: number, dy: number, dz: number): Vec2 =>
+      new Vec2((dx - dy) * 32, -((dx + dy) * 16 - dz * 32));
     const poly = (pts: Vec2[], fill: Color, stroke: Color | null) => {
       g.moveTo(pts[0].x, pts[0].y);
       for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
@@ -344,23 +345,29 @@ export class CampusBootstrap extends Component {
       if (stroke) { g.strokeColor = stroke; g.lineWidth = 1.5; g.stroke(); }
     };
     g.clear();
-    // 门洞（开启后露出的室内暗部）
-    if (open > 0.02) {
-      const a = Math.min(1, open * 1.4);
-      const dark = new Color(32, 36, 44, Math.round(255 * a));
-      poly([
-        L(-half, 0), L(half, 0), L(half, -thick), L(-half, -thick)
-      ], dark, null);
-    }
-    // 左门扇（门轴在左，自由端向内）
+    // 关闭时直接用 sprite 自带的门，不画门板
+    if (open <= 0.01) return;
+    // 门洞（开启后露出的室内暗部，竖直矩形）
+    const a = Math.min(1, open * 1.4);
+    const dark = new Color(32, 36, 44, Math.round(255 * a));
+    poly([
+      L(-half, 0, 0), L(half, 0, 0), L(half, 0, H), L(-half, 0, H)
+    ], dark, null);
+    // 左门扇（门轴在左，自由端向内，gy 减小）
     const lc = half * Math.cos(ang), ls = half * Math.sin(ang);
     poly([
-      L(-half, 0), L(-half + lc, -ls), L(-half + lc, -ls - thick), L(-half, -thick)
-    ], new Color(122, 158, 196, 235), new Color(28, 35, 48, 255));
+      L(-half, 0, 0), L(-half + lc, -ls, 0), L(-half + lc, -ls, H), L(-half, 0, H)
+    ], new Color(122, 74, 53, 255), new Color(58, 36, 24, 255));
+    poly([
+      L(-half + lc, -ls, 0), L(-half + lc, -ls - thick, 0), L(-half + lc, -ls - thick, H), L(-half + lc, -ls, H)
+    ], new Color(90, 53, 38, 255), null);
     // 右门扇（门轴在右，自由端向内）
     poly([
-      L(half, 0), L(half - lc, -ls), L(half - lc, -ls - thick), L(half, -thick)
-    ], new Color(134, 168, 204, 235), new Color(28, 35, 48, 255));
+      L(half, 0, 0), L(half - lc, -ls, 0), L(half - lc, -ls, H), L(half, 0, H)
+    ], new Color(133, 82, 60, 255), new Color(58, 36, 24, 255));
+    poly([
+      L(half - lc, -ls, 0), L(half - lc, -ls - thick, 0), L(half - lc, -ls - thick, H), L(half - lc, -ls, H)
+    ], new Color(95, 58, 41, 255), null);
   }
 
   // ---------- 建筑名标签（canvas 层，字号恒定；放大到阈值后显示） ----------

@@ -23,9 +23,13 @@
   #title .sub { margin-top:4px; font-size:12px; color:#9fb4d8; }
 
   #help {
-    bottom:16px; left:16px; padding:10px 14px; font-size:12px; line-height:1.9;
+    bottom:16px; left:262px; padding:10px 14px; font-size:12px; line-height:1.9;
     border-radius:12px; background:rgba(18,26,38,.78); backdrop-filter:blur(6px);
     border:1px solid rgba(120,170,255,.2); color:#c8d6ee;
+  }
+  /* 较窄桌面窗口：帮助面板移到小地图上方，避免横向溢出 */
+  @media (max-width:860px) {
+    #help { left:16px; bottom:178px; }
   }
   #help b { color:#ffd27a; }
   .key { display:inline-block; min-width:18px; padding:0 4px; margin:0 1px; text-align:center;
