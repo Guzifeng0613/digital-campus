@@ -10,6 +10,7 @@ import {
   findPath, nearestOpenGrid, pathToBuilding, GateOpen
 } from './IsoMath';
 import { Sfx } from './Sfx';
+import { Interior } from './Interior';
 
 const { ccclass } = _decorator;
 const UI = Layers.Enum.UI_2D;
@@ -58,6 +59,7 @@ export class CampusBootstrap extends Component {
   private doorOpen: GateOpen = {};
   private doorPanels: { id: string; L: Sprite | null; R: Sprite | null; dark: Graphics | null }[] = [];
   private btnRun!: Node;
+  private interior: Interior | null = null;
 
   // 自动寻路
   private navPath: Vec2[] | null = null;          // 图像世界坐标路径点
@@ -97,6 +99,9 @@ export class CampusBootstrap extends Component {
       await this.buildMap();
       await this.loadPlayerFrames();
       this.buildPlayer();
+      // 室内场景（复用角色帧）
+      this.interior = new Interior(this.canvas, this.playerFrames, this.sfx, () => this.runLock);
+      this.interior.setExitHandler(() => this.placePlayerOutside());
       this.startIntro();
       this.bindInput();
       console.log('%c[数字校园] 构建完成：共 ' + this.buildingNodes.length +
@@ -347,6 +352,50 @@ export class CampusBootstrap extends Component {
       if (e.dark) this.drawDoorDark(e.dark, b, open);
       if (e.L) this.updateDoorPanel(e.L, b, 'L', open);
       if (e.R) this.updateDoorPanel(e.R, b, 'R', open);
+    }
+  }
+
+  // 室内出门后：把玩家放到对应建筑门外
+  private placePlayerOutside() {
+    if (!this.interior) return;
+    const id = this.doorPanels.length ? null : null;
+    // 从门数据找当前建筑（interior 已清 id，需用最近建筑）
+    // 用玩家当前位置附近的门
+    const b = BUILDINGS.find(x => x.id === this.lastInteriorId);
+    if (b) {
+      const g0 = doorGeometry(b, 'L', 0);
+      if (g0) {
+        // 门外：沿门内法线反方向（南）偏移
+        const img = gridToImage(g0.cx, g0.cy + 1.6);
+        this.playerImg.set(img.x, img.y);
+        this.facing = 'down';
+      }
+    }
+  }
+  private lastInteriorId = '';
+
+  // 检测玩家在门口向建筑内移动 → 进入室内
+  private checkEnterBuilding(mdx: number, mdy: number) {
+    if (!this.interior || this.interior.active) return;
+    for (const e of this.doorPanels) {
+      const b = BUILDINGS.find(x => x.id === e.id)!;
+      const g0 = doorGeometry(b, 'L', 0);
+      if (!g0) continue;
+      if ((this.doorOpen[e.id] || 0) < 0.5) continue;
+      // 内法线
+      const bcx = b.grid[0] + b.grid[2] / 2, bcy = b.grid[1] + b.grid[3] / 2;
+      let inx = bcx - g0.cx, iny = bcy - g0.cy;
+      const il = Math.hypot(inx, iny) || 1;
+      inx /= il; iny /= il;
+      const dot = mdx * inx + mdy * iny;
+      if (dot < 0.5) continue;
+      const pg = imageToGrid(this.playerImg.x, this.playerImg.y);
+      const d = Math.hypot(pg.gx - g0.cx, pg.gy - g0.cy);
+      if (d < 2.6) {
+        this.lastInteriorId = b.id;
+        this.interior.enter(b, () => { });
+        return;
+      }
     }
   }
   // 建一个门扇 Sprite 节点（anchor 左上，像素不插值）
@@ -892,6 +941,25 @@ export class CampusBootstrap extends Component {
   update(dt: number) {
     if (!this.player) return;
     this.elapsed += dt;
+    // 室内场景：由 Interior 接管
+    if (this.interior && this.interior.active) {
+      let idx = 0, idy = 0;
+      if (this.keys.has(KeyCode.KEY_W) || this.keys.has(KeyCode.ARROW_UP)) idy -= 1;
+      if (this.keys.has(KeyCode.KEY_S) || this.keys.has(KeyCode.ARROW_DOWN)) idy += 1;
+      if (this.keys.has(KeyCode.KEY_A) || this.keys.has(KeyCode.ARROW_LEFT)) idx -= 1;
+      if (this.keys.has(KeyCode.KEY_D) || this.keys.has(KeyCode.ARROW_RIGHT)) idx += 1;
+      this.interior.update(dt, idx, idy);
+      this.content.active = false;
+      this.sortSprites();
+      return;
+    }
+    // 从室内回到室外
+    if (this.content.active === false && this.interior && !this.interior.active) {
+      this.content.active = true;
+      const lp0 = imageToLocal(this.playerImg.x, this.playerImg.y);
+      this.player.setPosition(lp0.x, lp0.y, 0);
+      this.updatePlayerFrame();
+    }
     // 开场动画期间：只推进镜头，不响应移动/门/寻路
     if (this.intro) {
       this.updateIntro(dt);
@@ -927,6 +995,7 @@ export class CampusBootstrap extends Component {
       this.phase += dt * (this.runLock ? 13 : 9);
       this.footstep(dt, this.runLock);
       this.follow = true; this.updateFollowBtn();
+      this.checkEnterBuilding(dx, dy);
     } else if (this.navPath && this.navPath.length) {
       const tgt = this.navPath[0];
       const ddx = tgt.x - this.playerImg.x, ddy = tgt.y - this.playerImg.y;
