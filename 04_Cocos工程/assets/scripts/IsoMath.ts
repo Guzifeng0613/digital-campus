@@ -108,14 +108,20 @@ export const DOOR_W: Record<string, number> = {
   "LIB": 3.6, "ACT": 4.2, "CAN-YULAN": 3.6, "CAN-ZIZHU": 3.2, "GYM": 5.0,
   "TEACH-2": 3.6, "WENLI": 3.6, "ENG-TRAIN": 3.4, "LAB-TECH": 4.0
 };
-const DOOR_YF: Record<string, number> = {
-  "LIB": 0.83, "ACT": 0.80, "CAN-YULAN": 0.67, "CAN-ZIZHU": 0.72, "GYM": 0.745,
-  "TEACH-2": 0.90, "WENLI": 0.834, "ENG-TRAIN": 0.74, "LAB-TECH": 0.846
-};
 const DOOR_XF: Record<string, number> = {
   "CAN-ZIZHU": 0.31, "GYM": 0.73, "TEACH-2": 0.47, "WENLI": 0.625, "ENG-TRAIN": 0.31
 };
-// 门中心（网格）：由 sprite 像素点反算
+// 门的竖直高度（3D 网格单位）
+export const DOOR_H: Record<string, number> = {
+  "LIB": 4.2, "ACT": 4.0, "CAN-YULAN": 4.6, "CAN-ZIZHU": 3.4, "GYM": 4.6,
+  "TEACH-2": 3.0, "WENLI": 4.4, "ENG-TRAIN": 3.4, "LAB-TECH": 4.0
+};
+// 门墙基在 sprite 中的纵向位置（南墙与地面交界）
+const DOOR_BASE_YF: Record<string, number> = {
+  "LIB": 0.986, "ACT": 0.942, "CAN-YULAN": 0.997, "CAN-ZIZHU": 0.880, "GYM": 0.981,
+  "TEACH-2": 0.999, "WENLI": 0.911, "ENG-TRAIN": 0.879, "LAB-TECH": 0.970
+};
+// 门中心（网格）：由 sprite 南墙墙基像素点反算
 export function buildingDoorCenter(b: CampusBuilding, realW: number, realH: number): { gx: number; gy: number } {
   const [fx, fy, fw, fh] = b.grid;
   const k = ISO_K[b.id] != null ? ISO_K[b.id] : 1.1;
@@ -126,7 +132,7 @@ export function buildingDoorCenter(b: CampusBuilding, realW: number, realH: numb
   const south = gridToImage(fx + fw, fy + fh);
   const topLeftX = south.x - ax * W, topLeftY = south.y - ay * H;
   const xf = DOOR_XF[b.id] != null ? DOOR_XF[b.id] : 0.5;
-  const yf = DOOR_YF[b.id] != null ? DOOR_YF[b.id] : 0.85;
+  const yf = DOOR_BASE_YF[b.id] != null ? DOOR_BASE_YF[b.id] : 0.95;
   const px = realW * xf, py = realH * yf;
   return imageToGrid(topLeftX + px * sc, topLeftY + py * sc);
 }

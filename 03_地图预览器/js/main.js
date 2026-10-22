@@ -872,14 +872,25 @@
     return { gx: (sx / (TW / 2) + sy / (TH / 2)) / 2, gy: (sy / (TH / 2) - sx / (TW / 2)) / 2 };
   }
   let buildingDoors = [];
+  // 门的竖直高度（3D 网格单位，门板从地面立起的高度）
+  const DOOR_H = {
+    LIB: 4.2, ACT: 4.0, "CAN-YULAN": 4.6, "CAN-ZIZHU": 3.4, GYM: 4.6,
+    "TEACH-2": 3.0, WENLI: 4.4, "ENG-TRAIN": 3.4, "LAB-TECH": 4.0
+  };
+  // 门墙基在 sprite 中的纵向位置（图像高度比例，南墙与地面交界）
+  const DOOR_BASE_YF = {
+    LIB: 0.986, ACT: 0.942, "CAN-YULAN": 0.997, "CAN-ZIZHU": 0.880, GYM: 0.981,
+    "TEACH-2": 0.999, WENLI: 0.911, "ENG-TRAIN": 0.879, "LAB-TECH": 0.970
+  };
   function initBuildingDoors() {
     buildingDoors = Object.keys(DOOR_W).map(id => {
       const b = D.buildings.find(x => x.id === id);
       const real = spriteImgs[id];
       if (!real) return null;
       const xf = DOOR_XF[id] != null ? DOOR_XF[id] : 0.5;
-      const g = spritePxToGrid(b, real, real.width * xf, real.height * DOOR_YF[id]);
-      return { id, b, open: 0, cx: g.gx, cy: g.gy, w: DOOR_W[id] };
+      // 门墙基（地面，竖直门板的底边）
+      const g = spritePxToGrid(b, real, real.width * xf, real.height * DOOR_BASE_YF[id]);
+      return { id, b, open: 0, cx: g.gx, cy: g.gy, w: DOOR_W[id], h: DOOR_H[id] };
     }).filter(Boolean);
   }
   function blockedAt(gx, gy, pad) {
@@ -1634,46 +1645,54 @@
     }
     ctx.imageSmoothingEnabled = true;
   }
-  // 建筑门：在网格空间画门扇（绕外侧门轴向内转 90°），再投影到屏幕
+  // 建筑门：竖直门板（3D，从地面立起），靠近时绕竖直门轴向内转 90°
+  const DOOR_ZK = 32;                        // 竖直 z 轴的屏幕像素比例（与 tile 同）
   function drawBuildingDoor(d) {
     const z = view.zoom;
     const open = d.open;
     const half = d.w / 2;
-    const thick = 0.35;                       // 门扇厚度（网格单位）
+    const thick = 0.3;                        // 门扇厚度（网格单位）
     const ang = open * Math.PI / 2;           // 0=贴墙，90°=向内
-    const G = (gx, gy) => ({ x: w2sX(isoX(gx, gy)), y: w2sY(isoY(gx, gy)) });
-    const poly = (pts, fill, stroke) => {
+    const H = d.h;                            // 门高（网格单位）
+    // 3D 点 (gx, gy, gz) -> 屏幕
+    const P3 = (gx, gy, gz) => ({
+      x: w2sX(isoX(gx, gy)),
+      y: w2sY(isoY(gx, gy) - gz * DOOR_ZK)
+    });
+    const poly = (pts, fill, stroke, lw) => {
       ctx.beginPath();
-      pts.forEach((p, i) => { const q = G(p[0], p[1]); i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); });
+      pts.forEach((p, i) => { const q = P3(p[0], p[1], p[2]); i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); });
       ctx.closePath();
       if (fill) { ctx.fillStyle = fill; ctx.fill(); }
-      if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = Math.max(1, 1.2 * z); ctx.stroke(); }
+      if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = Math.max(1, (lw || 1.3) * z); ctx.stroke(); }
     };
-    // 门洞（开启后露出的室内暗部）：随门扇开度渐显
-    if (open > 0.02) {
-      ctx.globalAlpha = Math.min(1, open * 1.4);
-      poly([
-        [d.cx - half, d.cy], [d.cx + half, d.cy],
-        [d.cx + half, d.cy - thick], [d.cx - half, d.cy - thick]
-      ], "#20242c", null);
-      ctx.globalAlpha = 1;
-    }
-    // 左门扇：门轴在左（cx-half），自由端从贴墙转到向内
+    // 关闭时直接用 sprite 自带的门，不额外画门板；开启后才画门板与暗部
+    if (open <= 0.01) return;
+    // 门洞（开启后露出的室内暗部）：竖直矩形，随开度渐显
+    ctx.globalAlpha = Math.min(1, open * 1.4);
+    poly([
+      [d.cx - half, d.cy, 0], [d.cx + half, d.cy, 0],
+      [d.cx + half, d.cy, H], [d.cx - half, d.cy, H]
+    ], "#20242c", null);
+    ctx.globalAlpha = 1;
+    // 左门扇：门轴在左（cx-half），自由端从贴墙转到向内（gy 减小）
     const lx = d.cx - half;
+    const fbx = lx + half * Math.cos(ang), fby = d.cy - half * Math.sin(ang);
     poly([
-      [lx, d.cy],
-      [lx + half * Math.cos(ang), d.cy - half * Math.sin(ang)],
-      [lx + half * Math.cos(ang), d.cy - half * Math.sin(ang) - thick],
-      [lx, d.cy - thick]
-    ], "rgba(122,158,196,0.92)", "#1c2330");
-    // 右门扇：门轴在右（cx+half），自由端从贴墙转到向内
+      [lx, d.cy, 0], [fbx, fby, 0], [fbx, fby, H], [lx, d.cy, H]
+    ], "#7a4a35", "#3a2418");
+    poly([
+      [fbx, fby, 0], [fbx, fby - thick, 0], [fbx, fby - thick, H], [fbx, fby, H]
+    ], "#5a3526", null);
+    // 右门扇：门轴在右（cx+half）
     const rx = d.cx + half;
+    const rbx = rx - half * Math.cos(ang), rby = d.cy - half * Math.sin(ang);
     poly([
-      [rx, d.cy],
-      [rx - half * Math.cos(ang), d.cy - half * Math.sin(ang)],
-      [rx - half * Math.cos(ang), d.cy - half * Math.sin(ang) - thick],
-      [rx, d.cy - thick]
-    ], "rgba(134,168,204,0.92)", "#1c2330");
+      [rx, d.cy, 0], [rbx, rby, 0], [rbx, rby, H], [rx, d.cy, H]
+    ], "#85523c", "#3a2418");
+    poly([
+      [rbx, rby, 0], [rbx, rby - thick, 0], [rbx, rby - thick, H], [rbx, rby, H]
+    ], "#5f3a29", null);
   }
   function drawBuilding(b) {
     if (b._hidden) return;
