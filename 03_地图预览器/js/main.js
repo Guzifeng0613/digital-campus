@@ -1101,14 +1101,96 @@
     mvx: 0, mvy: 1, stepT: 0, trans: false
   };
   const IROOM = { w: 22, h: 15, wall: 1.2, doorHalf: 1.6 };
-  // 室内家具（矩形，房间坐标）：[x,y,w,h,type]
-  const IFURN = [
-    { x: 8.2, y: 4.5, w: 5.6, h: 3.2, type: "table" },
-    { x: 3.2, y: 3.2, w: 3.4, h: 1.6, type: "desk" },
-    { x: 15.4, y: 3.2, w: 3.4, h: 1.6, type: "desk" },
-    { x: 2.6, y: 8.4, w: 1.8, h: 3.6, type: "shelf" },
-    { x: 17.6, y: 8.4, w: 1.8, h: 3.6, type: "shelf" }
-  ];
+  // 室内家具（矩形，房间坐标）：{x,y,w,h,type}；按建筑类型差异化
+  // floor: wood（木地板）/ tile（瓷砖）/ court（运动地板）
+  // rug: 地毯矩形；marks: 地面标线（不阻挡）
+  const LAYOUTS = {
+    library: {
+      floor: "wood",
+      rug: { x: 4, y: 5.5, w: 14, h: 6.5 },
+      furn: [
+        { x: 8, y: 2.0, w: 6, h: 1.6, type: "counter" },
+        { x: 1.8, y: 2.5, w: 1.4, h: 7.5, type: "shelf" },
+        { x: 18.8, y: 2.5, w: 1.4, h: 7.5, type: "shelf" },
+        { x: 4.5, y: 6, w: 4, h: 2, type: "readtable" },
+        { x: 13.5, y: 6, w: 4, h: 2, type: "readtable" },
+        { x: 4.5, y: 9.5, w: 4, h: 2, type: "readtable" },
+        { x: 13.5, y: 9.5, w: 4, h: 2, type: "readtable" }
+      ]
+    },
+    canteen: {
+      floor: "tile",
+      furn: [
+        { x: 5, y: 2.0, w: 12, h: 1.8, type: "counter" },
+        // 3 行 × 4 张四人餐桌（中央留过道对齐门）
+        ...[4.6, 7.4, 10.2].flatMap(ry =>
+          [3.3, 7.3, 13.3, 17.3].map(rx => ({ x: rx, y: ry, w: 2.4, h: 2.4, type: "dining" })))
+      ]
+    },
+    gym: {
+      floor: "court",
+      marks: [
+        { x: 3.5, y: 2.5, w: 15, h: 10, type: "court" }
+      ],
+      furn: [
+        { x: 1.8, y: 5, w: 1, h: 5, type: "bench" },
+        { x: 19.2, y: 5, w: 1, h: 5, type: "bench" }
+      ]
+    },
+    teaching: {
+      floor: "tile",
+      furn: [
+        { x: 6, y: 2.0, w: 10, h: 1.2, type: "board" },
+        // 3 行 × 4 张课桌（中央过道）
+        ...[4.5, 7.5, 10.5].flatMap(ry =>
+          [3, 6, 13, 16].map(rx => ({ x: rx, y: ry, w: 2.4, h: 1.4, type: "schooldesk" })))
+      ]
+    },
+    college: {
+      floor: "wood",
+      rug: { x: 6, y: 5, w: 10, h: 5.5 },
+      furn: [
+        { x: 6, y: 2, w: 10, h: 1.4, type: "lowshelf" },
+        ...[4.5, 7.5, 10.5].flatMap(ry => [
+          { x: 2, y: ry, w: 3.5, h: 1.8, type: "desk" },
+          { x: 16.5, y: ry, w: 3.5, h: 1.8, type: "desk" }
+        ])
+      ]
+    },
+    activity: {
+      floor: "wood",
+      rug: { x: 5, y: 5, w: 12, h: 5 },
+      furn: [
+        { x: 7, y: 2, w: 8, h: 1.6, type: "stage" },
+        { x: 3, y: 6, w: 1.6, h: 3.5, type: "sofa" },
+        { x: 17.4, y: 6, w: 1.6, h: 3.5, type: "sofa" },
+        { x: 8, y: 6.5, w: 6, h: 2.5, type: "coffeetable" }
+      ]
+    },
+    lab: {
+      floor: "tile",
+      furn: [
+        { x: 5, y: 2, w: 12, h: 1.4, type: "counter" },
+        // 3 排实验台（中央留过道）
+        ...[4.5, 7.5, 10.5].flatMap(ry => [
+          { x: 3, y: ry, w: 7, h: 1.6, type: "labbench" },
+          { x: 12, y: ry, w: 7, h: 1.6, type: "labbench" }
+        ])
+      ]
+    }
+  };
+  function layoutFor(id) {
+    if (id === "LIB") return LAYOUTS.library;
+    if (id === "CAN-YULAN" || id === "CAN-ZIZHU") return LAYOUTS.canteen;
+    if (id === "GYM") return LAYOUTS.gym;
+    if (id === "TEACH-2") return LAYOUTS.teaching;
+    if (id === "WENLI") return LAYOUTS.college;
+    if (id === "ACT") return LAYOUTS.activity;
+    if (id === "LAB-TECH" || id === "ENG-TRAIN") return LAYOUTS.lab;
+    return LAYOUTS.college;
+  }
+  let currentLayout = LAYOUTS.college;
+
   const iCanvas = document.getElementById("interiorCanvas");
   const ictx = iCanvas.getContext("2d");
   const fadeEl = document.getElementById("fadeOverlay");
@@ -1141,7 +1223,7 @@
     const inDoor = Math.abs(rx - doorC) < IROOM.doorHalf && ry > IROOM.h - w - 0.4;
     if (ry < w || rx < w || rx > IROOM.w - w) return true;
     if (ry > IROOM.h - w && !inDoor) return true;
-    for (const f of IFURN) {
+    for (const f of currentLayout.furn) {
       if (rx > f.x - 0.2 && rx < f.x + f.w + 0.2 && ry > f.y - 0.2 && ry < f.y + f.h + 0.2) return true;
     }
     return false;
@@ -1155,6 +1237,7 @@
       interior.active = true;
       interior.id = b.id;
       interior.name = b.name;
+      currentLayout = layoutFor(b.id);
       resizeInterior();
       // 玩家出现在门内（房间底部中央偏上）
       interior.ix = IROOM.w / 2;
@@ -1260,28 +1343,48 @@
     ictx.fillStyle = "#1a211c";
     ictx.fillRect(0, 0, window.innerWidth, window.innerHeight);
     const s = iScale;
-    const p0 = roomToScreen(0, 0);
-    // 地板（木地板）
     const floorP = roomToScreen(IROOM.wall, IROOM.wall);
     const floorW = (IROOM.w - 2 * IROOM.wall) * s;
     const floorH = (IROOM.h - 2 * IROOM.wall) * s;
-    ictx.fillStyle = "#c9a06b";
-    ictx.fillRect(floorP.x, floorP.y, floorW, floorH);
-    // 木地板纹理（竖纹）
-    ictx.strokeStyle = "rgba(120,82,40,.28)";
-    ictx.lineWidth = 1;
-    for (let i = 1; i < IROOM.w - 2 * IROOM.wall; i += 1) {
-      const x = floorP.x + i * s;
-      ictx.beginPath(); ictx.moveTo(x, floorP.y); ictx.lineTo(x, floorP.y + floorH); ictx.stroke();
+    if (currentLayout.floor === "wood" || currentLayout.floor === "court") {
+      // 木地板
+      ictx.fillStyle = currentLayout.floor === "court" ? "#cfa668" : "#c9a06b";
+      ictx.fillRect(floorP.x, floorP.y, floorW, floorH);
+      ictx.strokeStyle = "rgba(120,82,40,.28)";
+      ictx.lineWidth = 1;
+      for (let i = 1; i < IROOM.w - 2 * IROOM.wall; i += 1) {
+        const x = floorP.x + i * s;
+        ictx.beginPath(); ictx.moveTo(x, floorP.y); ictx.lineTo(x, floorP.y + floorH); ictx.stroke();
+      }
+    } else {
+      // 瓷砖地板
+      ictx.fillStyle = "#d8d2c4";
+      ictx.fillRect(floorP.x, floorP.y, floorW, floorH);
+      ictx.strokeStyle = "rgba(150,140,120,.45)";
+      ictx.lineWidth = 1;
+      const ts = 1.4;
+      for (let i = ts; i < IROOM.w - 2 * IROOM.wall; i += ts) {
+        const x = floorP.x + i * s;
+        ictx.beginPath(); ictx.moveTo(x, floorP.y); ictx.lineTo(x, floorP.y + floorH); ictx.stroke();
+      }
+      for (let j = ts; j < IROOM.h - 2 * IROOM.wall; j += ts) {
+        const y = floorP.y + j * s;
+        ictx.beginPath(); ictx.moveTo(floorP.x, y); ictx.lineTo(floorP.x + floorW, y); ictx.stroke();
+      }
     }
-    // 中央地毯
-    const rug = roomToScreen(6.5, 5.5);
-    ictx.fillStyle = "#7a5a9c";
-    ictx.fillRect(rug.x, rug.y, 9 * s, 4.5 * s);
-    ictx.strokeStyle = "#e0c9f0"; ictx.lineWidth = 3;
-    ictx.strokeRect(rug.x + 4, rug.y + 4, 9 * s - 8, 4.5 * s - 8);
+    // 地面标线（球场）
+    if (currentLayout.marks) for (const m of currentLayout.marks) drawCourtMarks(m);
+    // 地毯
+    if (currentLayout.rug) {
+      const r = currentLayout.rug;
+      const rp = roomToScreen(r.x, r.y);
+      ictx.fillStyle = "#7a5a9c";
+      ictx.fillRect(rp.x, rp.y, r.w * s, r.h * s);
+      ictx.strokeStyle = "#e0c9f0"; ictx.lineWidth = 3;
+      ictx.strokeRect(rp.x + 4, rp.y + 4, r.w * s - 8, r.h * s - 8);
+    }
     // 家具
-    for (const f of IFURN) drawFurniture(f);
+    for (const f of currentLayout.furn) drawFurniture(f);
     // 墙
     drawWalls();
     // 门洞（底部）
@@ -1289,33 +1392,149 @@
     // 玩家
     drawInteriorPlayer();
   }
+  // 球场标线（篮球场地）
+  function drawCourtMarks(m) {
+    const s = iScale;
+    const p = roomToScreen(m.x, m.y);
+    const w = m.w * s, h = m.h * s;
+    ictx.strokeStyle = "rgba(255,255,255,.85)";
+    ictx.lineWidth = 3;
+    // 外框
+    ictx.strokeRect(p.x, p.y, w, h);
+    // 中线
+    ictx.beginPath();
+    ictx.moveTo(p.x, p.y + h / 2); ictx.lineTo(p.x + w, p.y + h / 2); ictx.stroke();
+    // 中圈
+    ictx.beginPath(); ictx.arc(p.x + w / 2, p.y + h / 2, 1.3 * s, 0, 7); ictx.stroke();
+    // 两端禁区（矩形）
+    ictx.strokeRect(p.x, p.y + h / 2 - 2.2 * s, 3 * s, 4.4 * s);
+    ictx.strokeRect(p.x + w - 3 * s, p.y + h / 2 - 2.2 * s, 3 * s, 4.4 * s);
+    // 篮筐
+    ictx.fillStyle = "rgba(232,120,60,.9)";
+    ictx.beginPath(); ictx.arc(p.x + 1.5 * s, p.y + h / 2, 0.5 * s, 0, 7); ictx.fill();
+    ictx.beginPath(); ictx.arc(p.x + w - 1.5 * s, p.y + h / 2, 0.5 * s, 0, 7); ictx.fill();
+  }
   function drawFurniture(f) {
     const s = iScale;
     const p = roomToScreen(f.x, f.y);
     const w = f.w * s, h = f.h * s;
-    if (f.type === "table") {
+    const t = f.type;
+    if (t === "readtable") {
+      // 图书馆阅览桌：长木桌 + 两侧座椅
       ictx.fillStyle = "#8a5a32"; ictx.fillRect(p.x, p.y, w, h);
-      ictx.fillStyle = "#a87448"; ictx.fillRect(p.x + 4, p.y + 4, w - 8, h - 8);
-      // 桌上物品
-      ictx.fillStyle = "#d9c9a0"; ictx.beginPath(); ictx.arc(p.x + w * 0.3, p.y + h * 0.5, 6, 0, 7); ictx.fill();
-      ictx.fillStyle = "#5a8a5a"; ictx.beginPath(); ictx.arc(p.x + w * 0.7, p.y + h * 0.5, 7, 0, 7); ictx.fill();
-    } else if (f.type === "desk") {
+      ictx.fillStyle = "#a87448"; ictx.fillRect(p.x + 3, p.y + 3, w - 6, h - 6);
+      ictx.fillStyle = "#d9c9a0"; ictx.beginPath(); ictx.arc(p.x + w * 0.3, p.y + h * 0.5, 5, 0, 7); ictx.fill();
+      ictx.fillStyle = "#5a8a5a"; ictx.beginPath(); ictx.arc(p.x + w * 0.7, p.y + h * 0.5, 6, 0, 7); ictx.fill();
+    } else if (t === "coffeetable") {
+      ictx.fillStyle = "#7a4a2a"; ictx.fillRect(p.x, p.y, w, h);
+      ictx.fillStyle = "#9a6238"; ictx.fillRect(p.x + 4, p.y + 4, w - 8, h - 8);
+      ictx.fillStyle = "#d9c9a0"; ictx.beginPath(); ictx.arc(p.x + w * 0.5, p.y + h * 0.5, 7, 0, 7); ictx.fill();
+    } else if (t === "desk" || t === "schooldesk") {
+      // 书桌 / 课桌
       ictx.fillStyle = "#9a6a3c"; ictx.fillRect(p.x, p.y, w, h);
-      ictx.fillStyle = "#c08a52"; ictx.fillRect(p.x + 3, p.y + 3, w - 6, h - 6);
-    } else if (f.type === "shelf") {
+      ictx.fillStyle = "#c08a52"; ictx.fillRect(p.x + 2, p.y + 2, w - 4, h - 4);
+      if (t === "schooldesk") {
+        // 桌面书本
+        ictx.fillStyle = "#5a8ac4"; ictx.fillRect(p.x + 3, p.y + 3, w * 0.32, h * 0.4);
+        ictx.fillStyle = "#c45a5a"; ictx.fillRect(p.x + w * 0.5, p.y + 3, w * 0.32, h * 0.4);
+      }
+    } else if (t === "shelf") {
+      // 高书架（竖向）
       ictx.fillStyle = "#7a4e28"; ictx.fillRect(p.x, p.y, w, h);
       ictx.strokeStyle = "#5a3818"; ictx.lineWidth = 2;
       for (let i = 1; i < 4; i++) {
         ictx.beginPath(); ictx.moveTo(p.x, p.y + (h / 4) * i); ictx.lineTo(p.x + w, p.y + (h / 4) * i); ictx.stroke();
       }
-      // 书（彩色）
       const cols = ["#c45a5a", "#5a8ac4", "#c4a85a", "#5ac48a"];
       for (let r = 0; r < 4; r++) {
         for (let c = 0; c < 3; c++) {
           ictx.fillStyle = cols[(r + c) % 4];
-          ictx.fillRect(p.x + 3 + c * (w / 3.2), p.y + 3 + r * (h / 4), w / 5, h / 6);
+          ictx.fillRect(p.x + 2 + c * (w / 3.4), p.y + 2 + r * (h / 4), w / 5, h / 6);
         }
       }
+    } else if (t === "lowshelf") {
+      // 矮书架（横向）
+      ictx.fillStyle = "#7a4e28"; ictx.fillRect(p.x, p.y, w, h);
+      ictx.strokeStyle = "#5a3818"; ictx.lineWidth = 2;
+      ictx.beginPath(); ictx.moveTo(p.x, p.y + h / 2); ictx.lineTo(p.x + w, p.y + h / 2); ictx.stroke();
+      const cols = ["#c45a5a", "#5a8ac4", "#c4a85a", "#5ac48a", "#a05ac4"];
+      for (let r = 0; r < 2; r++) {
+        for (let c = 0; c < 10; c++) {
+          ictx.fillStyle = cols[(r + c) % 5];
+          ictx.fillRect(p.x + 3 + c * (w / 10.5), p.y + 2 + r * (h / 2), w / 14, h / 3);
+        }
+      }
+    } else if (t === "counter") {
+      // 柜台 / 取餐台 / 服务台
+      ictx.fillStyle = "#6a4626"; ictx.fillRect(p.x, p.y, w, h);
+      ictx.fillStyle = "#e8e0d0"; ictx.fillRect(p.x + 3, p.y + 3, w - 6, h * 0.4);
+      // 台面物品（餐盘/文件）
+      const trayCols = ["#c45a5a", "#5a8ac4", "#c4a85a", "#5ac48a", "#a05ac4"];
+      const n = Math.floor(w / (s * 1.3));
+      for (let i = 0; i < n; i++) {
+        ictx.fillStyle = trayCols[i % 5];
+        ictx.fillRect(p.x + 6 + i * s * 1.3, p.y + h * 0.55, s * 0.9, h * 0.32);
+      }
+    } else if (t === "dining") {
+      // 食堂四人餐桌：圆桌 + 四把椅子（在 footprint 内）
+      const cx = p.x + w / 2, cy = p.y + h / 2;
+      ictx.fillStyle = "#6a4626";
+      // 四把椅子（先画，圆桌盖住内侧）
+      ictx.fillRect(cx - 5, p.y + 2, 10, 6);
+      ictx.fillRect(cx - 5, p.y + h - 8, 10, 6);
+      ictx.fillRect(p.x + 2, cy - 5, 6, 10);
+      ictx.fillRect(p.x + w - 8, cy - 5, 6, 10);
+      // 圆桌
+      ictx.fillStyle = "#8a5a32";
+      ictx.beginPath(); ictx.arc(cx, cy, w * 0.34, 0, 7); ictx.fill();
+      ictx.fillStyle = "#b07a48";
+      ictx.beginPath(); ictx.arc(cx, cy, w * 0.25, 0, 7); ictx.fill();
+      // 餐盘
+      ictx.fillStyle = "#e8e0d0";
+      ictx.beginPath(); ictx.arc(cx - w * 0.12, cy - h * 0.1, 3, 0, 7); ictx.fill();
+      ictx.fillStyle = "#c45a5a";
+      ictx.beginPath(); ictx.arc(cx + w * 0.12, cy + h * 0.1, 3, 0, 7); ictx.fill();
+    } else if (t === "labbench") {
+      // 实验台：深色台面 + 水槽/仪器
+      ictx.fillStyle = "#4a5a66"; ictx.fillRect(p.x, p.y, w, h);
+      ictx.fillStyle = "#6a7a86"; ictx.fillRect(p.x + 2, p.y + 2, w - 4, h * 0.5);
+      // 水槽
+      ictx.fillStyle = "#3a4a56";
+      for (let i = 0; i < Math.floor(w / (s * 2)); i++) {
+        ictx.fillRect(p.x + 6 + i * s * 2, p.y + h * 0.55, s * 1.2, h * 0.35);
+      }
+      // 试管架（彩色）
+      ictx.fillStyle = "#c45a5a"; ictx.fillRect(p.x + w - 12, p.y + 3, 4, h * 0.4);
+      ictx.fillStyle = "#5ac48a"; ictx.fillRect(p.x + w - 7, p.y + 3, 4, h * 0.4);
+    } else if (t === "bench") {
+      // 长凳（体育馆边）
+      ictx.fillStyle = "#6a4626"; ictx.fillRect(p.x, p.y, w, h);
+      ictx.fillStyle = "#a07040"; ictx.fillRect(p.x + 1, p.y + 2, w - 2, h * 0.3);
+    } else if (t === "board") {
+      // 黑板/讲台
+      ictx.fillStyle = "#2a3a32"; ictx.fillRect(p.x, p.y, w, h);
+      ictx.strokeStyle = "#8a6a3a"; ictx.lineWidth = 3;
+      ictx.strokeRect(p.x, p.y, w, h);
+      // 粉笔字
+      ictx.fillStyle = "rgba(255,255,255,.7)";
+      ictx.fillRect(p.x + 8, p.y + 4, w * 0.3, 2);
+      ictx.fillRect(p.x + 8, p.y + 9, w * 0.2, 2);
+    } else if (t === "sofa") {
+      // 沙发（竖向）
+      ictx.fillStyle = "#7a5a8a"; ictx.fillRect(p.x, p.y, w, h);
+      ictx.fillStyle = "#9a7aaa"; ictx.fillRect(p.x + 2, p.y + 2, w - 4, h - 4);
+      // 靠垫分隔
+      ictx.strokeStyle = "#6a4a7a"; ictx.lineWidth = 2;
+      for (let i = 1; i < 3; i++) {
+        ictx.beginPath(); ictx.moveTo(p.x + 2, p.y + (h / 3) * i);
+        ictx.lineTo(p.x + w - 2, p.y + (h / 3) * i); ictx.stroke();
+      }
+    } else if (t === "stage") {
+      // 舞台
+      ictx.fillStyle = "#7a4a2a"; ictx.fillRect(p.x, p.y, w, h);
+      ictx.fillStyle = "#9a6238"; ictx.fillRect(p.x + 3, p.y + 3, w - 6, h - 6);
+      // 幕布
+      ictx.fillStyle = "#a03a3a"; ictx.fillRect(p.x + 3, p.y + 3, w - 6, h * 0.4);
     }
   }
   function drawWalls() {
