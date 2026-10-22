@@ -1093,6 +1093,306 @@
       return { id, b, open: 0, bl: s.bl, br: s.br, H: s.H, cx, cy };
     }).filter(Boolean);
   }
+
+  // ====================== 室内场景（进门黑屏切换，出门返回） ======================
+  const interior = {
+    active: false, id: null, name: "",
+    ix: 0, iy: 0, phase: 0, facing: "down", moving: false, runLock: false,
+    mvx: 0, mvy: 1, stepT: 0, trans: false
+  };
+  const IROOM = { w: 22, h: 15, wall: 1.2, doorHalf: 1.6 };
+  // 室内家具（矩形，房间坐标）：[x,y,w,h,type]
+  const IFURN = [
+    { x: 8.2, y: 4.5, w: 5.6, h: 3.2, type: "table" },
+    { x: 3.2, y: 3.2, w: 3.4, h: 1.6, type: "desk" },
+    { x: 15.4, y: 3.2, w: 3.4, h: 1.6, type: "desk" },
+    { x: 2.6, y: 8.4, w: 1.8, h: 3.6, type: "shelf" },
+    { x: 17.6, y: 8.4, w: 1.8, h: 3.6, type: "shelf" }
+  ];
+  const iCanvas = document.getElementById("interiorCanvas");
+  const ictx = iCanvas.getContext("2d");
+  const fadeEl = document.getElementById("fadeOverlay");
+  const iHud = document.getElementById("interiorHud");
+  const iNameEl = document.getElementById("interiorName");
+  let iScale = 30, iox = 0, ioy = 0;
+  function roomToScreen(rx, ry) {
+    return { x: iox + rx * iScale, y: ioy + ry * iScale };
+  }
+  function screenToRoom(sx, sy) {
+    return { x: (sx - iox) / iScale, y: (sy - ioy) / iScale };
+  }
+  function resizeInterior() {
+    const dpr = window.devicePixelRatio || 1;
+    iCanvas.width = window.innerWidth * dpr;
+    iCanvas.height = window.innerHeight * dpr;
+    iCanvas.style.width = window.innerWidth + "px";
+    iCanvas.style.height = window.innerHeight + "px";
+    ictx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // 房间居中，留边
+    iScale = Math.min((window.innerWidth - 80) / IROOM.w, (window.innerHeight - 120) / IROOM.h);
+    iox = (window.innerWidth - IROOM.w * iScale) / 2;
+    ioy = (window.innerHeight - IROOM.h * iScale) / 2 + 16;
+  }
+  // 室内碰撞：墙 + 家具；门缺口可走
+  function roomBlocked(rx, ry) {
+    const w = IROOM.wall;
+    // 底部门缺口
+    const doorC = IROOM.w / 2;
+    const inDoor = Math.abs(rx - doorC) < IROOM.doorHalf && ry > IROOM.h - w - 0.4;
+    if (ry < w || rx < w || rx > IROOM.w - w) return true;
+    if (ry > IROOM.h - w && !inDoor) return true;
+    for (const f of IFURN) {
+      if (rx > f.x - 0.2 && rx < f.x + f.w + 0.2 && ry > f.y - 0.2 && ry < f.y + f.h + 0.2) return true;
+    }
+    return false;
+  }
+  function enterBuilding(b) {
+    if (interior.trans || interior.active) return;
+    interior.trans = true;
+    // 黑屏
+    fadeEl.classList.add("show");
+    setTimeout(() => {
+      interior.active = true;
+      interior.id = b.id;
+      interior.name = b.name;
+      resizeInterior();
+      // 玩家出现在门内（房间底部中央偏上）
+      interior.ix = IROOM.w / 2;
+      interior.iy = IROOM.h - IROOM.wall - 1.8;
+      interior.facing = "down";
+      interior.phase = 0; interior.stepT = 0;
+      iCanvas.style.display = "block";
+      iNameEl.textContent = b.name;
+      iHud.classList.add("show");
+      // 淡入
+      setTimeout(() => {
+        fadeEl.classList.remove("show");
+        interior.trans = false;
+      }, 120);
+    }, 460);
+  }
+  // 检测玩家是否在门口并向建筑内移动 → 进入
+  function checkEnterBuilding(mdx, mdy) {
+    if (interior.trans || interior.active) return;
+    for (const d of buildingDoors) {
+      if (d.open < 0.5) continue;
+      // 门的内法线（指向建筑中心）
+      const [g, w, h] = [d.b.grid, d.b.grid[2], d.b.grid[3]];
+      const bcx = g[0] + w / 2, bcy = g[1] + h / 2;
+      let inx = bcx - d.cx, iny = bcy - d.cy;
+      const il = Math.hypot(inx, iny) || 1;
+      inx /= il; iny /= il;
+      // 玩家移动方向与内法线同向
+      const dot = mdx * inx + mdy * iny;
+      if (dot < 0.5) continue;
+      // 玩家靠近门
+      const dist = Math.hypot(player.wx - d.cx, player.wy - d.cy);
+      if (dist < 2.6) {
+        enterBuilding(d.b);
+        return;
+      }
+    }
+  }
+  function exitBuilding() {
+    if (interior.trans) return;
+    interior.trans = true;
+    fadeEl.classList.add("show");
+    setTimeout(() => {
+      // 回到室外：把玩家放到门前（门外）
+      const d = buildingDoors.find(x => x.id === interior.id);
+      if (d) {
+        // 门外偏移：沿门的外法线（南向）
+        const nx = d.cx, ny = d.cy + 1.6;
+        player.wx = nx; player.wy = ny;
+        player.facing = "down";
+      }
+      interior.active = false;
+      interior.id = null;
+      iCanvas.style.display = "none";
+      iHud.classList.remove("show");
+      setTimeout(() => {
+        fadeEl.classList.remove("show");
+        interior.trans = false;
+      }, 120);
+    }, 460);
+  }
+  // 室内移动
+  function updateInterior(dt) {
+    let dx = 0, dy = 0;
+    if (keys["w"] || keys["arrowup"]) dy -= 1;
+    if (keys["s"] || keys["arrowdown"]) dy += 1;
+    if (keys["a"] || keys["arrowleft"]) dx -= 1;
+    if (keys["d"] || keys["arrowright"]) dx += 1;
+    // 摇杆
+    if (stick.mag > 0.1) { dx += stick.x; dy += stick.y; }
+    const moving = (dx !== 0 || dy !== 0);
+    interior.moving = moving;
+    if (moving) {
+      const len = Math.hypot(dx, dy) || 1;
+      dx /= len; dy /= len;
+      interior.mvx = dx; interior.mvy = dy;
+      if (Math.abs(dx) > Math.abs(dy)) interior.facing = dx > 0 ? "right" : "left";
+      else interior.facing = dy > 0 ? "down" : "up";
+      const speed = interior.runLock ? 5.2 : 3.4;
+      const nx = interior.ix + dx * speed * dt;
+      const ny = interior.iy + dy * speed * dt;
+      if (!roomBlocked(nx, interior.iy)) interior.ix = nx;
+      if (!roomBlocked(interior.ix, ny)) interior.iy = ny;
+      interior.phase += dt * (interior.runLock ? 14.5 : 9);
+      interior.stepT += dt;
+      const interval = interior.runLock ? 0.23 : 0.34;
+      if (interior.stepT >= interval) {
+        interior.stepT = 0;
+        SFX.step(interior.runLock);
+      }
+    }
+    // 走到门缺口（接近底部）→ 出门
+    const doorC = IROOM.w / 2;
+    if (Math.abs(interior.ix - doorC) < IROOM.doorHalf && interior.iy > IROOM.h - IROOM.wall - 0.2) {
+      exitBuilding();
+    }
+  }
+  // 画室内
+  function drawInterior() {
+    ictx.setTransform(window.devicePixelRatio || 1, 0, 0, window.devicePixelRatio || 1, 0, 0);
+    ictx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    // 背景（房间外）
+    ictx.fillStyle = "#1a211c";
+    ictx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+    const s = iScale;
+    const p0 = roomToScreen(0, 0);
+    // 地板（木地板）
+    const floorP = roomToScreen(IROOM.wall, IROOM.wall);
+    const floorW = (IROOM.w - 2 * IROOM.wall) * s;
+    const floorH = (IROOM.h - 2 * IROOM.wall) * s;
+    ictx.fillStyle = "#c9a06b";
+    ictx.fillRect(floorP.x, floorP.y, floorW, floorH);
+    // 木地板纹理（竖纹）
+    ictx.strokeStyle = "rgba(120,82,40,.28)";
+    ictx.lineWidth = 1;
+    for (let i = 1; i < IROOM.w - 2 * IROOM.wall; i += 1) {
+      const x = floorP.x + i * s;
+      ictx.beginPath(); ictx.moveTo(x, floorP.y); ictx.lineTo(x, floorP.y + floorH); ictx.stroke();
+    }
+    // 中央地毯
+    const rug = roomToScreen(6.5, 5.5);
+    ictx.fillStyle = "#7a5a9c";
+    ictx.fillRect(rug.x, rug.y, 9 * s, 4.5 * s);
+    ictx.strokeStyle = "#e0c9f0"; ictx.lineWidth = 3;
+    ictx.strokeRect(rug.x + 4, rug.y + 4, 9 * s - 8, 4.5 * s - 8);
+    // 家具
+    for (const f of IFURN) drawFurniture(f);
+    // 墙
+    drawWalls();
+    // 门洞（底部）
+    drawDoorGap();
+    // 玩家
+    drawInteriorPlayer();
+  }
+  function drawFurniture(f) {
+    const s = iScale;
+    const p = roomToScreen(f.x, f.y);
+    const w = f.w * s, h = f.h * s;
+    if (f.type === "table") {
+      ictx.fillStyle = "#8a5a32"; ictx.fillRect(p.x, p.y, w, h);
+      ictx.fillStyle = "#a87448"; ictx.fillRect(p.x + 4, p.y + 4, w - 8, h - 8);
+      // 桌上物品
+      ictx.fillStyle = "#d9c9a0"; ictx.beginPath(); ictx.arc(p.x + w * 0.3, p.y + h * 0.5, 6, 0, 7); ictx.fill();
+      ictx.fillStyle = "#5a8a5a"; ictx.beginPath(); ictx.arc(p.x + w * 0.7, p.y + h * 0.5, 7, 0, 7); ictx.fill();
+    } else if (f.type === "desk") {
+      ictx.fillStyle = "#9a6a3c"; ictx.fillRect(p.x, p.y, w, h);
+      ictx.fillStyle = "#c08a52"; ictx.fillRect(p.x + 3, p.y + 3, w - 6, h - 6);
+    } else if (f.type === "shelf") {
+      ictx.fillStyle = "#7a4e28"; ictx.fillRect(p.x, p.y, w, h);
+      ictx.strokeStyle = "#5a3818"; ictx.lineWidth = 2;
+      for (let i = 1; i < 4; i++) {
+        ictx.beginPath(); ictx.moveTo(p.x, p.y + (h / 4) * i); ictx.lineTo(p.x + w, p.y + (h / 4) * i); ictx.stroke();
+      }
+      // 书（彩色）
+      const cols = ["#c45a5a", "#5a8ac4", "#c4a85a", "#5ac48a"];
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 3; c++) {
+          ictx.fillStyle = cols[(r + c) % 4];
+          ictx.fillRect(p.x + 3 + c * (w / 3.2), p.y + 3 + r * (h / 4), w / 5, h / 6);
+        }
+      }
+    }
+  }
+  function drawWalls() {
+    const s = iScale, w = IROOM.wall;
+    const col = "#e8e0d0", edge = "#b8ad94";
+    // 上墙
+    let p = roomToScreen(0, 0);
+    ictx.fillStyle = col; ictx.fillRect(p.x, p.y, IROOM.w * s, w * s);
+    ictx.fillStyle = edge; ictx.fillRect(p.x, p.y + w * s - 4, IROOM.w * s, 4);
+    // 左墙
+    ictx.fillStyle = col; ictx.fillRect(p.x, p.y, w * s, IROOM.h * s);
+    ictx.fillStyle = edge; ictx.fillRect(p.x + w * s - 4, p.y, 4, IROOM.h * s);
+    // 右墙
+    p = roomToScreen(IROOM.w - w, 0);
+    ictx.fillStyle = col; ictx.fillRect(p.x, p.y, w * s, IROOM.h * s);
+    ictx.fillStyle = edge; ictx.fillRect(p.x, p.y, 4, IROOM.h * s);
+    // 底墙（门缺口两侧）
+    const doorC = IROOM.w / 2;
+    p = roomToScreen(0, IROOM.h - w);
+    ictx.fillStyle = col;
+    ictx.fillRect(p.x, p.y, (doorC - IROOM.doorHalf) * s, w * s);
+    ictx.fillRect(p.x + (doorC + IROOM.doorHalf) * s, p.y,
+      (IROOM.w - doorC - IROOM.doorHalf) * s, w * s);
+    ictx.fillStyle = edge;
+    ictx.fillRect(p.x, p.y, (doorC - IROOM.doorHalf) * s, 4);
+    ictx.fillRect(p.x + (doorC + IROOM.doorHalf) * s, p.y,
+      (IROOM.w - doorC - IROOM.doorHalf) * s, 4);
+  }
+  function drawDoorGap() {
+    const s = iScale, doorC = IROOM.w / 2;
+    const p = roomToScreen(doorC - IROOM.doorHalf, IROOM.h - IROOM.wall);
+    // 门洞（深色地面 + 门框）
+    ictx.fillStyle = "#5a4a38";
+    ictx.fillRect(p.x, p.y, IROOM.doorHalf * 2 * s, IROOM.wall * s);
+    ictx.strokeStyle = "#8a7a5a"; ictx.lineWidth = 2;
+    ictx.strokeRect(p.x, p.y, IROOM.doorHalf * 2 * s, IROOM.wall * s);
+    // 出口箭头提示
+    ictx.fillStyle = "rgba(255,255,255,.85)";
+    ictx.font = "bold 13px monospace"; ictx.textAlign = "center";
+    ictx.fillText("▼ 出口", p.x + IROOM.doorHalf * s, p.y - 6);
+  }
+  function drawInteriorPlayer() {
+    const p = roomToScreen(interior.ix, interior.iy);
+    const s = iScale;
+    // 室内角色尺寸（与房间比例协调，约 1.6 个房间单位高）
+    const fw = FRAME_W * (s / 26) * PLAYER_SCALE;
+    const fh = FRAME_H * (s / 26) * PLAYER_SCALE;
+    const fset = frames[interior.facing] || frames.down;
+    const seq = interior.moving ? (interior.runLock ? fset.run : fset.walk) : fset.idle;
+    const fi = interior.moving ? (Math.floor(interior.phase) % seq.length) : 0;
+    const pimg = seq && seq[fi];
+    let bob = 0;
+    if (interior.moving) {
+      if (interior.runLock) {
+        const lift = [0, 1.6, 5.2, 1.6][Math.floor(interior.phase) % 4];
+        bob = -lift * (s / 26) * PLAYER_SCALE;
+      } else {
+        bob = -Math.abs(Math.sin(interior.phase * Math.PI / 2)) * 1.6 * (s / 26);
+      }
+    }
+    // 影子
+    const airborne = interior.moving && interior.runLock && (Math.floor(interior.phase) % 4 === 2);
+    ictx.fillStyle = airborne ? "rgba(20,30,40,.16)" : "rgba(20,30,40,.3)";
+    ictx.beginPath();
+    ictx.ellipse(p.x, p.y, (airborne ? 7 : 9) * (s / 26) * PLAYER_SCALE,
+      (airborne ? 2.8 : 3.6) * (s / 26) * PLAYER_SCALE, 0, 0, 7);
+    ictx.fill();
+    if (pimg) {
+      ictx.imageSmoothingEnabled = false;
+      ictx.save();
+      ictx.translate(p.x, p.y + bob);
+      ictx.drawImage(pimg, -fw / 2, -fh, fw, fh);
+      ictx.restore();
+      ictx.imageSmoothingEnabled = true;
+    }
+  }
+
   function blockedAt(gx, gy, pad) {
     if (gx < GX0 || gx > GX1 || gy < GY0 || gy > GY1) return true;
     // #80 通行层权威：建筑（实体菱形+异形colliders+南墙）·草坪·水体在 navMask 涂黑，
@@ -1439,6 +1739,7 @@
       footstep(dt, wantRun);
       if (wantRun) { player.dustT += dt; if (player.dustT > 0.12) { player.dustT = 0; spawnDust(); } }
       follow = true; updateFollowBtn();
+      checkEnterBuilding(dx, dy);
     } else if (player.navPath && player.navPath.length) {
       const fast = !!player.runLock;
       const speed = fast ? RUN_SPEED : JOG_SPEED;
@@ -1694,7 +1995,9 @@
     btnMute.textContent = "音效：" + (m ? "关" : "开");
   };
   window.__map = {
-    view, player, buildings: D.buildings, sfx: SFX,
+    view, player, buildings: D.buildings, sfx: SFX, interior,
+    enterBuilding: (id) => { const b = D.buildings.find(x => x.id === id); if (b) enterBuilding(b); },
+    exitBuilding: () => exitBuilding(),
     worldToScreen: (wx, wy) => ({ x: w2sX(wx), y: w2sY(wy) }),
     select: b => showInfo(b),
     gotoBuilding: id => { const b = D.buildings.find(x => x.id === id); if (b) navigateToBuilding(b); },
@@ -2412,17 +2715,25 @@ function drawFences(F) {
   let last = performance.now();
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
-    if (intro) {
+    if (interior.active) {
+      updateInterior(dt);
+      drawInterior();
+    } else if (intro) {
       updateIntro(dt);
+      if (follow) {
+        view.x += window.innerWidth * 0.5 - w2sX(isoX(player.wx, player.wy));
+        view.y += window.innerHeight * 0.62 - w2sY(isoY(player.wx, player.wy));
+      }
+      render();
     } else {
       updatePlayer(dt);
       updateGates(dt);
+      if (follow) {
+        view.x += window.innerWidth * 0.5 - w2sX(isoX(player.wx, player.wy));
+        view.y += window.innerHeight * 0.62 - w2sY(isoY(player.wx, player.wy));
+      }
+      render();
     }
-    if (follow) {
-      view.x += window.innerWidth * 0.5 - w2sX(isoX(player.wx, player.wy));
-      view.y += window.innerHeight * 0.62 - w2sY(isoY(player.wx, player.wy));
-    }
-    render();
     requestAnimationFrame(frame);
   }
   function resize() {
@@ -2431,6 +2742,7 @@ function drawFences(F) {
     canvas.height = window.innerHeight * dpr;
     canvas.style.width = window.innerWidth + "px";
     canvas.style.height = window.innerHeight + "px";
+    if (interior.active) resizeInterior();
   }
   window.addEventListener("resize", resize);
 
