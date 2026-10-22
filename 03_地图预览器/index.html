@@ -117,9 +117,14 @@
     border:1px solid rgba(120,170,255,.2); display:flex; align-items:flex-end; justify-content:center; }
   #info .photo img { max-width:100%; max-height:100%; object-fit:contain; image-rendering:pixelated;
     filter:drop-shadow(0 6px 8px rgba(40,60,90,.25)); }
-  .goto-btn { margin-top:12px; width:100%; padding:9px 0; border-radius:9px; cursor:pointer;
-    font-size:13px; color:#fff; background:#2d6cdf; border:1px solid #6ea8ff; transition:background .15s; }
+  .btn-row { display:flex; gap:8px; margin-top:12px; }
+  .goto-btn, .enter-btn { flex:1; padding:9px 0; border-radius:9px; cursor:pointer;
+    font-size:13px; color:#fff; border:1px solid; transition:background .15s; }
+  .goto-btn { background:#2d6cdf; border-color:#6ea8ff; }
   .goto-btn:hover { background:#3a7ef0; }
+  .enter-btn { background:#2e9e5b; border-color:#6fd697; }
+  .enter-btn:hover { background:#37b369; }
+  .goto-btn.solo { flex:1; }
   #navTip { position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(8px); z-index:15;
     font-size:13px; color:#dce8ff; background:rgba(18,26,38,.92); border:1px solid rgba(120,170,255,.3);
     padding:8px 18px; border-radius:20px; opacity:0; pointer-events:none; transition:all .2s; }
@@ -268,7 +273,10 @@
   <div class="body">
     <span class="tag" id="iTag"></span>
     <div id="iDesc"></div>
-    <button class="goto-btn" id="btnGoto">前往这里</button>
+    <div class="btn-row">
+      <button class="enter-btn" id="btnEnter" style="display:none;">进入建筑</button>
+      <button class="goto-btn" id="btnGoto">前往这里</button>
+    </div>
   </div>
 </div>
 
