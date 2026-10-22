@@ -103,38 +103,59 @@ export interface SpriteGeometry {
   lx: number; ly: number;        // 节点（左上锚点）在 content 的本地坐标
 }
 
-// ---------- 建筑门（门扇绕外侧门轴向内打开）：TEACH-1 为大拱门穿堂，不设门 ----------
-export const DOOR_W: Record<string, number> = {
-  "LIB": 3.6, "ACT": 4.2, "CAN-YULAN": 3.6, "CAN-ZIZHU": 3.2, "GYM": 5.0,
-  "TEACH-2": 3.6, "WENLI": 3.6, "ENG-TRAIN": 3.4, "LAB-TECH": 4.0
+// ---------- 建筑门（复用 sprite 已有门，门扇绕外侧门轴向内打开）：TEACH-1 为大拱门穿堂，不设门 ----------
+export const DOOR_SPEC: Record<string, { bl: number[]; br: number[]; H: number }> = {
+  "WENLI": { bl: [145.915, 149.267], br: [148.144, 146.929], H: 3.938 },
+  "LIB": { bl: [94.179, 149.385], br: [95.273, 148.291], H: 3.090 },
+  "ACT": { bl: [41.045, 125.574], br: [41.947, 124.671], H: 2.346 },
+  "CAN-YULAN": { bl: [25.376, 90.839], br: [26.361, 89.417], H: 3.784 },
+  "CAN-ZIZHU": { bl: [20.823, 149.396], br: [21.891, 148.328], H: 2.297 },
+  "GYM": { bl: [64.325, 286.539], br: [67.339, 283.525], H: 3.609 },
+  "TEACH-2": { bl: [80.398, 113.543], br: [82.203, 111.739], H: 2.418 },
+  "ENG-TRAIN": { bl: [120.151, 59.070], br: [120.620, 58.600], H: 2.844 },
+  "LAB-TECH": { bl: [126.404, 206.748], br: [128.591, 204.561], H: 3.151 }
 };
-const DOOR_XF: Record<string, number> = {
-  "CAN-ZIZHU": 0.31, "GYM": 0.73, "TEACH-2": 0.47, "WENLI": 0.625, "ENG-TRAIN": 0.31
-};
-// 门的竖直高度（3D 网格单位）
-export const DOOR_H: Record<string, number> = {
-  "LIB": 4.2, "ACT": 4.0, "CAN-YULAN": 4.6, "CAN-ZIZHU": 3.4, "GYM": 4.6,
-  "TEACH-2": 3.0, "WENLI": 4.4, "ENG-TRAIN": 3.4, "LAB-TECH": 4.0
-};
-// 门墙基在 sprite 中的纵向位置（南墙与地面交界）
-const DOOR_BASE_YF: Record<string, number> = {
-  "LIB": 0.986, "ACT": 0.942, "CAN-YULAN": 0.997, "CAN-ZIZHU": 0.880, "GYM": 0.981,
-  "TEACH-2": 0.999, "WENLI": 0.911, "ENG-TRAIN": 0.879, "LAB-TECH": 0.970
-};
-// 门中心（网格）：由 sprite 南墙墙基像素点反算
-export function buildingDoorCenter(b: CampusBuilding, realW: number, realH: number): { gx: number; gy: number } {
-  const [fx, fy, fw, fh] = b.grid;
-  const k = ISO_K[b.id] != null ? ISO_K[b.id] : 1.1;
-  const sc = (fw + fh) * TW / 2 * k / realW;
-  const W = realW * sc, H = realH * sc;
-  const ax = ANCHOR_AX[b.id] != null ? ANCHOR_AX[b.id] : 0.5;
-  const ay = ANCHOR_AY[b.id] != null ? ANCHOR_AY[b.id] : 0.95;
-  const south = gridToImage(fx + fw, fy + fh);
-  const topLeftX = south.x - ax * W, topLeftY = south.y - ay * H;
-  const xf = DOOR_XF[b.id] != null ? DOOR_XF[b.id] : 0.5;
-  const yf = DOOR_BASE_YF[b.id] != null ? DOOR_BASE_YF[b.id] : 0.95;
-  const px = realW * xf, py = realH * yf;
-  return imageToGrid(topLeftX + px * sc, topLeftY + py * sc);
+export interface DoorGeom {
+  // 门洞中心（网格，触发判定）
+  cx: number; cy: number;
+  // 单扇门的四角（图像世界，y-down）：铰链底/顶、自由端底/顶
+  HB: Vec2; HT: Vec2; FB: Vec2; FT: Vec2;
+}
+// 计算某栋门的几何（side: 'L'=左门铰链在左，'R'=右门铰链在右），open 为开度 0..1
+export function doorGeometry(b: CampusBuilding, side: 'L' | 'R', open: number): DoorGeom | null {
+  const s = DOOR_SPEC[b.id];
+  if (!s) return null;
+  const bl = s.bl, br = s.br, H = s.H;
+  const blP = gridToImage(bl[0], bl[1]);
+  const brP = gridToImage(br[0], br[1]);
+  // 墙底向量（图像世界）
+  const wvx = brP.x - blP.x, wvy = brP.y - blP.y;
+  const wlen = Math.hypot(wvx, wvy);
+  const ux = wvx / wlen, uy = wvy / wlen;
+  // 室内方向：垂直墙、朝建筑中心
+  const cg = b.grid;
+  const cP = gridToImage(cg[0] + cg[2] / 2, cg[1] + cg[3] / 2);
+  const midP = gridToImage((bl[0] + br[0]) / 2, (bl[1] + br[1]) / 2);
+  const toCx = cP.x - midP.x, toCy = cP.y - midP.y;
+  let ix = -uy, iy = ux;
+  if (ix * toCx + iy * toCy < 0) { ix = -ix; iy = -iy; }
+  const half = wlen / 2;
+  const ang = open * Math.PI / 2;
+  const ca = Math.cos(ang), sa = Math.sin(ang);
+  // 铰链（图像世界）
+  const hinge = side === 'L' ? blP : brP;
+  const closedDir = side === 'L' ? { x: ux, y: uy } : { x: -ux, y: -uy };
+  // 自由端底（地面）
+  const fbx = hinge.x + half * (ca * closedDir.x + sa * ix);
+  const fby = hinge.y + half * (ca * closedDir.y + sa * iy);
+  // 顶（竖直向上，图像 y 减 H*SY）
+  const htx = hinge.x, hty = hinge.y - H * SY;
+  const ftx = fbx, fty = fby - H * SY;
+  return {
+    cx: (bl[0] + br[0]) / 2, cy: (bl[1] + br[1]) / 2,
+    HB: new Vec2(hinge.x, hinge.y), HT: new Vec2(htx, hty),
+    FB: new Vec2(fbx, fby), FT: new Vec2(ftx, fty)
+  };
 }
 export function spriteGeometry(b: CampusBuilding, realW: number, realH: number): SpriteGeometry {
   const [fx, fy, fw, fh] = b.grid;

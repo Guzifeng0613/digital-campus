@@ -379,10 +379,16 @@
     "flowerbed_corner", "shrub_a", "shrub_b"];
   const TILE_IDS = ["grass_a", "grass_b", "dirt", "pave", "water", "jct",
     "jct_cross", "jct_t", "grass_dirt_edge", "grass_pave_edge"];
+  const DOOR_IDS = ["WENLI", "LIB", "ACT", "CAN-YULAN", "CAN-ZIZHU",
+    "GYM", "TEACH-2", "ENG-TRAIN", "LAB-TECH"];
   const BOOT = Promise.all([
     ...SPRITE_IDS.map(id => loadImg("img/topdown/sprites/" + id + ".png?av=v20").then(im => spriteImgs[id] = im)),
     ...TILE_IDS.map(t => loadImg("img/topdown/tiles/" + t + ".png?av=v20").then(im => TILES[t] = im)),
     ...DECOR_IDS.map(t => loadImg("img/topdown/decor/" + t + ".png?av=v20").then(im => spriteImgs[t] = im)),
+    ...DOOR_IDS.map(id => Promise.all([
+      loadImg("img/topdown/doors/" + id + "_L.png?av=v20").then(im => spriteImgs[id + "_doorL"] = im),
+      loadImg("img/topdown/doors/" + id + "_R.png?av=v20").then(im => spriteImgs[id + "_doorR"] = im)
+    ])),
     ...["GATE-W", "GATE-E"].map(id =>
       Promise.all([
         loadImg("img/topdown/sprites/" + id + "_towers.png?av=v20").then(im => spriteImgs[id + "_towers"] = im),
@@ -849,19 +855,19 @@
     const r = visRect(b);
     return { id, b, open: 0, cx: r.x + r.w / 2, cy: r.y + r.h / 2 };
   });
-  // 建筑门（靠近时向内打开）：门扇宽度（网格单位，总开口）+ 门扇在 sprite 中的纵向位置（图像高度比例）。
+  // 建筑门（靠近时向内打开）：复用 sprite 里已有的门。
+  // 每栋门 = 左右铰链（门底，网格）+ 门高（网格），门扇纹理从 sprite 门裁剪（_L/_R）。
   // TEACH-1 为大拱门穿堂，不设门扇。
-  const DOOR_W = {
-    LIB: 3.6, ACT: 4.2, "CAN-YULAN": 3.6, "CAN-ZIZHU": 3.2, GYM: 5.0,
-    "TEACH-2": 3.6, WENLI: 3.6, "ENG-TRAIN": 3.4, "LAB-TECH": 4.0
-  };
-  const DOOR_YF = {
-    LIB: 0.83, ACT: 0.80, "CAN-YULAN": 0.67, "CAN-ZIZHU": 0.72, GYM: 0.745,
-    "TEACH-2": 0.90, WENLI: 0.834, "ENG-TRAIN": 0.74, "LAB-TECH": 0.846
-  };
-  // 门中心在 sprite 中的横向位置（图像宽度比例，默认 0.5）
-  const DOOR_XF = {
-    "CAN-ZIZHU": 0.31, GYM: 0.73, "TEACH-2": 0.47, WENLI: 0.625, "ENG-TRAIN": 0.31
+  const DOOR_SPEC = {
+    WENLI: { bl: [145.915, 149.267], br: [148.144, 146.929], H: 3.938 },
+    LIB: { bl: [94.179, 149.385], br: [95.273, 148.291], H: 3.090 },
+    ACT: { bl: [41.045, 125.574], br: [41.947, 124.671], H: 2.346 },
+    "CAN-YULAN": { bl: [25.376, 90.839], br: [26.361, 89.417], H: 3.784 },
+    "CAN-ZIZHU": { bl: [20.823, 149.396], br: [21.891, 148.328], H: 2.297 },
+    GYM: { bl: [64.325, 286.539], br: [67.339, 283.525], H: 3.609 },
+    "TEACH-2": { bl: [80.398, 113.543], br: [82.203, 111.739], H: 2.418 },
+    "ENG-TRAIN": { bl: [120.151, 59.070], br: [120.620, 58.600], H: 2.844 },
+    "LAB-TECH": { bl: [126.404, 206.748], br: [128.591, 204.561], H: 3.151 }
   };
   // 由 sprite 像素点反算网格 y（zoom=1、原点 0 时的屏幕坐标）
   function spritePxToGrid(b, real, px, py) {
@@ -872,25 +878,14 @@
     return { gx: (sx / (TW / 2) + sy / (TH / 2)) / 2, gy: (sy / (TH / 2) - sx / (TW / 2)) / 2 };
   }
   let buildingDoors = [];
-  // 门的竖直高度（3D 网格单位，门板从地面立起的高度）
-  const DOOR_H = {
-    LIB: 4.2, ACT: 4.0, "CAN-YULAN": 4.6, "CAN-ZIZHU": 3.4, GYM: 4.6,
-    "TEACH-2": 3.0, WENLI: 4.4, "ENG-TRAIN": 3.4, "LAB-TECH": 4.0
-  };
-  // 门墙基在 sprite 中的纵向位置（图像高度比例，南墙与地面交界）
-  const DOOR_BASE_YF = {
-    LIB: 0.986, ACT: 0.942, "CAN-YULAN": 0.997, "CAN-ZIZHU": 0.880, GYM: 0.981,
-    "TEACH-2": 0.999, WENLI: 0.911, "ENG-TRAIN": 0.879, "LAB-TECH": 0.970
-  };
   function initBuildingDoors() {
-    buildingDoors = Object.keys(DOOR_W).map(id => {
+    buildingDoors = Object.keys(DOOR_SPEC).map(id => {
       const b = D.buildings.find(x => x.id === id);
-      const real = spriteImgs[id];
-      if (!real) return null;
-      const xf = DOOR_XF[id] != null ? DOOR_XF[id] : 0.5;
-      // 门墙基（地面，竖直门板的底边）
-      const g = spritePxToGrid(b, real, real.width * xf, real.height * DOOR_BASE_YF[id]);
-      return { id, b, open: 0, cx: g.gx, cy: g.gy, w: DOOR_W[id], h: DOOR_H[id] };
+      const s = DOOR_SPEC[id];
+      if (!b) return null;
+      // 门底中点（用于触发判定）
+      const cx = (s.bl[0] + s.br[0]) / 2, cy = (s.bl[1] + s.br[1]) / 2;
+      return { id, b, open: 0, bl: s.bl, br: s.br, H: s.H, cx, cy };
     }).filter(Boolean);
   }
   function blockedAt(gx, gy, pad) {
@@ -1313,6 +1308,7 @@
     }
     // 建筑门：靠近南墙门中线即向内打开
     for (const d of buildingDoors) {
+      if (window.__freezeDoors) continue;
       const dist = Math.hypot(pg.gx - d.cx, pg.gy - d.cy);
       d.open += ((dist < 5.5 ? 1 : 0) - d.open) * k;
     }
@@ -1479,6 +1475,7 @@
       spritePxToGrid: (b, real, px, py) => spritePxToGrid(b, real, px, py),
       gateState: () => campusGates.map(g => ({ id: g.id, open: g.open, cx: g.cx, cy: g.cy })),
       doorState: () => buildingDoors.map(d => ({ id: d.id, open: d.open, cx: d.cx, cy: d.cy })),
+      setDoorOpen(id, v) { const d = buildingDoors.find(x => x.id === id); if (d) d.open = v; },
       spriteInfo(id) {
         const b = D.buildings.find(x => x.id === id);
         const real = spriteImgs[id];
@@ -1645,54 +1642,101 @@
     }
     ctx.imageSmoothingEnabled = true;
   }
-  // 建筑门：竖直门板（3D，从地面立起），靠近时绕竖直门轴向内转 90°
+  // 建筑门：复用 sprite 已有门（裁剪门扇纹理），靠近时绕竖直门轴向内转 90°
   const DOOR_ZK = 32;                        // 竖直 z 轴的屏幕像素比例（与 tile 同）
   function drawBuildingDoor(d) {
     const z = view.zoom;
     const open = d.open;
-    const half = d.w / 2;
-    const thick = 0.3;                        // 门扇厚度（网格单位）
-    const ang = open * Math.PI / 2;           // 0=贴墙，90°=向内
-    const H = d.h;                            // 门高（网格单位）
-    // 3D 点 (gx, gy, gz) -> 屏幕
-    const P3 = (gx, gy, gz) => ({
-      x: w2sX(isoX(gx, gy)),
-      y: w2sY(isoY(gx, gy) - gz * DOOR_ZK)
+    const H = d.H;
+    const bl = d.bl, br = d.br;
+    // 3D 点 (gx, gy, gz) -> 世界屏幕
+    const P3w = (gx, gy, gz) => ({
+      x: isoX(gx, gy),
+      y: isoY(gx, gy) - gz * DOOR_ZK
     });
-    const poly = (pts, fill, stroke, lw) => {
-      ctx.beginPath();
-      pts.forEach((p, i) => { const q = P3(p[0], p[1], p[2]); i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); });
-      ctx.closePath();
-      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
-      if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = Math.max(1, (lw || 1.3) * z); ctx.stroke(); }
-    };
-    // 关闭时直接用 sprite 自带的门，不额外画门板；开启后才画门板与暗部
+    // 世界屏幕 -> 屏幕
+    const S = p => ({ x: w2sX(p.x), y: w2sY(p.y) });
+    // 关闭时直接用 sprite 自带的门
     if (open <= 0.01) return;
-    // 门洞（开启后露出的室内暗部）：竖直矩形，随开度渐显
+    // 门底中点（闭合时）
+    const mid = [(bl[0] + br[0]) / 2, (bl[1] + br[1]) / 2];
+    // 墙底方向（世界屏幕）
+    const blp = P3w(bl[0], bl[1], 0), brp = P3w(br[0], br[1], 0);
+    const wx = brp.x - blp.x, wy = brp.y - blp.y;
+    const wlen = Math.hypot(wx, wy);
+    // 墙单位（世界屏幕）
+    const ux = wx / wlen, uy = wy / wlen;
+    // 室内方向：垂直墙、朝建筑中心（世界屏幕）
+    const bctr = d.b.grid;
+    const bcenter = P3w(bctr[0] + bctr[2] / 2, bctr[1] + bctr[3] / 2, 0);
+    const dcenter = P3w(mid[0], mid[1], 0);
+    const toCx = bcenter.x - dcenter.x, toCy = bcenter.y - dcenter.y;
+    // 两个垂直方向，选与朝建筑中心同向的
+    let ix = -uy, iy = ux;
+    if (ix * toCx + iy * toCy < 0) { ix = -ix; iy = -iy; }
+    // 门洞暗部（闭合门轮廓，竖直矩形）
+    const darkPts = [
+      S(P3w(bl[0], bl[1], 0)), S(P3w(br[0], br[1], 0)),
+      S(P3w(br[0], br[1], H)), S(P3w(bl[0], bl[1], H))
+    ];
     ctx.globalAlpha = Math.min(1, open * 1.4);
-    poly([
-      [d.cx - half, d.cy, 0], [d.cx + half, d.cy, 0],
-      [d.cx + half, d.cy, H], [d.cx - half, d.cy, H]
-    ], "#20242c", null);
+    ctx.beginPath();
+    darkPts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+    ctx.closePath();
+    ctx.fillStyle = "#161a22"; ctx.fill();
     ctx.globalAlpha = 1;
-    // 左门扇：门轴在左（cx-half），自由端从贴墙转到向内（gy 减小）
-    const lx = d.cx - half;
-    const fbx = lx + half * Math.cos(ang), fby = d.cy - half * Math.sin(ang);
-    poly([
-      [lx, d.cy, 0], [fbx, fby, 0], [fbx, fby, H], [lx, d.cy, H]
-    ], "#7a4a35", "#3a2418");
-    poly([
-      [fbx, fby, 0], [fbx, fby - thick, 0], [fbx, fby - thick, H], [fbx, fby, H]
-    ], "#5a3526", null);
-    // 右门扇：门轴在右（cx+half）
-    const rx = d.cx + half;
-    const rbx = rx - half * Math.cos(ang), rby = d.cy - half * Math.sin(ang);
-    poly([
-      [rx, d.cy, 0], [rbx, rby, 0], [rbx, rby, H], [rx, d.cy, H]
-    ], "#85523c", "#3a2418");
-    poly([
-      [rbx, rby, 0], [rbx, rby - thick, 0], [rbx, rby - thick, H], [rbx, rby, H]
-    ], "#5f3a29", null);
+    // 半宽（世界屏幕）
+    const halfLen = wlen / 2;
+    const ang = open * Math.PI / 2;
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    // 世界屏幕 -> 网格（地面，z=0）
+    const screenToGrid = (px, py) => ({
+      gx: (px / 32 + py / 16) / 2,
+      gy: (py / 16 - px / 32) / 2
+    });
+    // 画一扇门板（用裁剪纹理）
+    // side: 'L'=左门（铰链在左，纹理从左到右），'R'=右门（铰链在右）
+    const drawPanel = (side, hinge, closedDir) => {
+      const tex = side === 'L' ? spriteImgs[d.id + "_doorL"] : spriteImgs[d.id + "_doorR"];
+      if (!tex) return;
+      // 铰链底（世界屏幕）
+      const hb = P3w(hinge[0], hinge[1], 0);
+      // 自由端（世界屏幕）：闭合方向 + 室内方向
+      const fx = hb.x + halfLen * (ca * closedDir.x + sa * ix);
+      const fy = hb.y + halfLen * (ca * closedDir.y + sa * iy);
+      // 铰链顶
+      const ht = P3w(hinge[0], hinge[1], H);
+      // 自由端顶
+      const gfree = screenToGrid(fx, fy);
+      const ft = P3w(gfree.gx, gfree.gy, H);
+      // 纹理映射（世界屏幕）
+      let tx0, ty0, bx_x, bx_y, by_x, by_y;
+      if (side === 'L') {
+        // 纹理左上=铰链顶，右上=自由端顶，左下=铰链底
+        tx0 = ht.x; ty0 = ht.y;
+        bx_x = (ft.x - ht.x) / tex.width; bx_y = (ft.y - ht.y) / tex.width;
+        by_x = (hb.x - ht.x) / tex.height; by_y = (hb.y - ht.y) / tex.height;
+      } else {
+        // 纹理右上=铰链顶，左上=自由端顶，右下=铰链底
+        tx0 = ft.x; ty0 = ft.y;
+        bx_x = (ht.x - ft.x) / tex.width; bx_y = (ht.y - ft.y) / tex.width;
+        by_x = (hb.x - ht.x) / tex.height; by_y = (hb.y - ht.y) / tex.height;
+      }
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      // 转到屏幕（含 zoom/平移）
+      ctx.setTransform(
+        bx_x * z, bx_y * z,
+        by_x * z, by_y * z,
+        w2sX(tx0), w2sY(ty0)
+      );
+      ctx.drawImage(tex, 0, 0);
+      ctx.restore();
+    };
+    // 左门：铰链 bl，闭合方向朝右（墙单位）
+    drawPanel('L', bl, { x: ux, y: uy });
+    // 右门：铰链 br，闭合方向朝左（-墙单位）
+    drawPanel('R', br, { x: -ux, y: -uy });
   }
   function drawBuilding(b) {
     if (b._hidden) return;
@@ -1713,7 +1757,7 @@
         ctx.imageSmoothingEnabled = true;
       }
       // 建筑门：门扇向内开合（画在 sprite 之上）
-      if (DOOR_W[b.id]) {
+      if (DOOR_SPEC[b.id]) {
         const d = buildingDoors.find(x => x.id === b.id);
         if (d) drawBuildingDoor(d);
       }

@@ -6,7 +6,7 @@ import {
 import { META, BUILDINGS, GROUP_CN, CampusBuilding } from './CampusData';
 import {
   GROUND_W, GROUND_H, gridToLocal, gridToImage, imageToLocal, localToImage, imageToGrid,
-  isBlocked, fitZoom, spriteGeometry, GATE_GEOM, buildingDoorCenter, DOOR_W, DOOR_H,
+  isBlocked, fitZoom, spriteGeometry, GATE_GEOM, DOOR_SPEC, doorGeometry,
   findPath, nearestOpenGrid, pathToBuilding, GateOpen
 } from './IsoMath';
 
@@ -49,9 +49,9 @@ export class CampusBootstrap extends Component {
   // 校门开合
   private gateOpen: GateOpen = {};
   private gateBars: { id: string; pivot: Node }[] = [];
-  // 建筑门开合
+  // 建筑门开合（左/右门扇各一个旋转 Sprite，门洞暗部一个 Graphics）
   private doorOpen: GateOpen = {};
-  private doorGfx: { id: string; g: Graphics; cx: number; cy: number }[] = [];
+  private doorPanels: { id: string; L: Sprite | null; R: Sprite | null; dark: Graphics | null }[] = [];
   private btnRun!: Node;
 
   // 自动寻路
@@ -216,16 +216,25 @@ export class CampusBootstrap extends Component {
         node.active = false;
         this.buildTeachParts(b, geom);
       }
-      // 建筑门（门扇绕外侧门轴向内打开）
-      if (DOOR_W[b.id] != null) {
-        const c = buildingDoorCenter(b, realW, realH);
-        const g = new Node('BuildingDoor_' + b.id);
-        g.layer = UI;
-        g.addComponent(UITransform);
-        const gg = g.addComponent(Graphics);
-        g.setPosition(gridToLocal(c.gx, c.gy));
-        this.content.addChild(g);
-        this.doorGfx.push({ id: b.id, g: gg, cx: c.gx, cy: c.gy });
+      // 建筑门（门扇复用 sprite 已有门，绕外侧门轴向内打开）
+      if (DOOR_SPEC[b.id]) {
+        const entry: { id: string; L: Sprite | null; R: Sprite | null; dark: Graphics | null }
+          = { id: b.id, L: null, R: null, dark: null };
+        // 门洞暗部（Graphics，随开度渐显）
+        const dn = new Node('BuildingDoorDark_' + b.id);
+        dn.layer = UI;
+        dn.addComponent(UITransform);
+        const dg = dn.addComponent(Graphics);
+        this.content.addChild(dn);
+        entry.dark = dg;
+        // 左/右门扇（异步加载裁剪纹理）
+        this.loadSF(b.res + '_doorL').then(sf => {
+          entry.L = this.makeDoorPanel(b.id + '_L', sf);
+        }).catch(() => null);
+        this.loadSF(b.res + '_doorR').then(sf => {
+          entry.R = this.makeDoorPanel(b.id + '_R', sf);
+        }).catch(() => null);
+        this.doorPanels.push(entry);
         this.doorOpen[b.id] = 0;
       }
       // 校门伸缩门（异步加载，动画开合）
@@ -316,58 +325,82 @@ export class CampusBootstrap extends Component {
     }
   }
 
-  // ---------- 建筑门：角色靠近时门扇绕外侧门轴向内转 90° ----------
+  // ---------- 建筑门：复用 sprite 已有门，角色靠近时门扇绕外侧门轴向内转 90° ----------
   private updateDoors(dt: number) {
     const pg = imageToGrid(this.playerImg.x, this.playerImg.y);
-    for (const x of this.doorGfx) {
-      const d = Math.hypot(pg.gx - x.cx, pg.gy - x.cy);
+    for (const e of this.doorPanels) {
+      const b = BUILDINGS.find(x => x.id === e.id)!;
+      const g0 = doorGeometry(b, 'L', 0);
+      if (!g0) continue;
+      const d = Math.hypot(pg.gx - g0.cx, pg.gy - g0.cy);
       const target = d < 5.5 ? 1 : 0;
-      const cur = this.doorOpen[x.id] || 0;
+      const cur = this.doorOpen[e.id] || 0;
       const open = cur + (target - cur) * Math.min(1, dt * 5);
-      this.doorOpen[x.id] = open;
-      this.drawDoor(x.g, x.id, open);
+      this.doorOpen[e.id] = open;
+      if (e.dark) this.drawDoorDark(e.dark, b, open);
+      if (e.L) this.updateDoorPanel(e.L, b, 'L', open);
+      if (e.R) this.updateDoorPanel(e.R, b, 'R', open);
     }
   }
-  // 门扇绘制（节点本地坐标，原点为门中心，竖直门板从地面立起）
-  private drawDoor(g: Graphics, id: string, open: number) {
-    const w = DOOR_W[id], half = w / 2;
-    const thick = 0.3;
-    const ang = open * Math.PI / 2;
-    const H = DOOR_H[id] || 4.0;
-    // 3D 网格偏移 (dx,dy,dz) -> 本地坐标
-    const L = (dx: number, dy: number, dz: number): Vec2 =>
-      new Vec2((dx - dy) * 32, -((dx + dy) * 16 - dz * 32));
-    const poly = (pts: Vec2[], fill: Color, stroke: Color | null) => {
-      g.moveTo(pts[0].x, pts[0].y);
-      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
-      g.close();
-      if (fill) { g.fillColor = fill; g.fill(); }
-      if (stroke) { g.strokeColor = stroke; g.lineWidth = 1.5; g.stroke(); }
-    };
+  // 建一个门扇 Sprite 节点（anchor 左上，像素不插值）
+  private makeDoorPanel(name: string, sf: SpriteFrame): Sprite {
+    const n = new Node('DoorPanel_' + name);
+    n.layer = UI;
+    n.addComponent(UITransform);
+    const sp = n.addComponent(Sprite);
+    sp.spriteFrame = sf;
+    sp.sizeMode = Sprite.SizeMode.CUSTOM;
+    sf.texture.setFilters(Texture2D.Filter.LINEAR, Texture2D.Filter.POINT);
+    n.getComponent(UITransform)!.setContentSize(sf.getRect().width, sf.getRect().height);
+    n.getComponent(UITransform)!.setAnchorPoint(0, 1);  // 左上
+    this.content.addChild(n);
+    return sp;
+  }
+  // 门洞暗部（闭合门轮廓，竖直矩形，随开度渐显）
+  private drawDoorDark(g: Graphics, b: CampusBuilding, open: number) {
+    const gm = doorGeometry(b, 'L', 0);
     g.clear();
-    // 关闭时直接用 sprite 自带的门，不画门板
-    if (open <= 0.01) return;
-    // 门洞（开启后露出的室内暗部，竖直矩形）
+    if (open <= 0.01 || !gm) return;
     const a = Math.min(1, open * 1.4);
-    const dark = new Color(32, 36, 44, Math.round(255 * a));
-    poly([
-      L(-half, 0, 0), L(half, 0, 0), L(half, 0, H), L(-half, 0, H)
-    ], dark, null);
-    // 左门扇（门轴在左，自由端向内，gy 减小）
-    const lc = half * Math.cos(ang), ls = half * Math.sin(ang);
-    poly([
-      L(-half, 0, 0), L(-half + lc, -ls, 0), L(-half + lc, -ls, H), L(-half, 0, H)
-    ], new Color(122, 74, 53, 255), new Color(58, 36, 24, 255));
-    poly([
-      L(-half + lc, -ls, 0), L(-half + lc, -ls - thick, 0), L(-half + lc, -ls - thick, H), L(-half + lc, -ls, H)
-    ], new Color(90, 53, 38, 255), null);
-    // 右门扇（门轴在右，自由端向内）
-    poly([
-      L(half, 0, 0), L(half - lc, -ls, 0), L(half - lc, -ls, H), L(half, 0, H)
-    ], new Color(133, 82, 60, 255), new Color(58, 36, 24, 255));
-    poly([
-      L(half - lc, -ls, 0), L(half - lc, -ls - thick, 0), L(half - lc, -ls - thick, H), L(half - lc, -ls, H)
-    ], new Color(95, 58, 41, 255), null);
+    const bl = imageToLocal(gm.HB.x, gm.HB.y);
+    const brImg = new Vec2(2 * gm.cx - gm.HB.x, 2 * gm.cy - gm.HB.y);
+    const br = imageToLocal(brImg.x, brImg.y);
+    const blT = imageToLocal(gm.HT.x, gm.HT.y);
+    const brT = imageToLocal(gm.HT.x + (brImg.x - gm.HB.x), gm.HT.y + (brImg.y - gm.HB.y));
+    g.moveTo(bl.x, bl.y);
+    g.lineTo(br.x, br.y);
+    g.lineTo(brT.x, brT.y);
+    g.lineTo(blT.x, blT.y);
+    g.close();
+    g.fillColor = new Color(22, 26, 34, Math.round(255 * a));
+    g.fill();
+  }
+  // 更新门扇位置/旋转/缩放/倾斜（用裁剪纹理）
+  private updateDoorPanel(sp: Sprite, b: CampusBuilding, side: 'L' | 'R', open: number) {
+    const gm = doorGeometry(b, side, open);
+    const node = sp.node;
+    const sf = sp.spriteFrame;
+    if (!gm || !sf) return;
+    const rect = sf.getRect();
+    const w = rect.width, h = rect.height;
+    const topLeft = side === 'L' ? gm.HT : gm.FT;
+    const topRight = side === 'L' ? gm.FT : gm.HT;
+    const tl = imageToLocal(topLeft.x, topLeft.y);
+    const tr = imageToLocal(topRight.x, topRight.y);
+    const bxx = (tr.x - tl.x) / w, bxy = (tr.y - tl.y) / w;
+    const hb = imageToLocal(gm.HB.x, gm.HB.y);
+    const ht = side === 'L' ? imageToLocal(gm.HT.x, gm.HT.y) : imageToLocal(gm.HT.x, gm.HT.y);
+    const byx = (hb.x - ht.x) / h, byy = (hb.y - ht.y) / h;
+    const xAng = Math.atan2(bxy, bxx) * 180 / Math.PI;
+    const sxLen = Math.hypot(bxx, bxy);
+    const syLen = Math.hypot(byx, byy);
+    const yAng = Math.atan2(byy, byx) * 180 / Math.PI;
+    const skewX = yAng - xAng - 90;
+    node.setPosition(tl);
+    node.angle = xAng;
+    node.setScale(sxLen, syLen);
+    node.setSkewX(skewX);
+    node.setSkewY(0);
   }
 
   // ---------- 建筑名标签（canvas 层，字号恒定；放大到阈值后显示） ----------
