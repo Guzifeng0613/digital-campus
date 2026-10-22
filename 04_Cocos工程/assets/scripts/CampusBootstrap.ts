@@ -9,6 +9,7 @@ import {
   isBlocked, fitZoom, spriteGeometry, GATE_GEOM, DOOR_SPEC, doorGeometry,
   findPath, nearestOpenGrid, pathToBuilding, GateOpen
 } from './IsoMath';
+import { Sfx } from './Sfx';
 
 const { ccclass } = _decorator;
 const UI = Layers.Enum.UI_2D;
@@ -35,6 +36,8 @@ export class CampusBootstrap extends Component {
 
   private zoom = 0.1;
   private follow = false;
+  private readonly sfx = new Sfx();
+  private stepT = 0;
   // 开场动画（镜头从全校俯瞰缓推到出生点）
   private intro: { t: number; dur: number; z0: number; z1: number; dcx: number; dcy: number } | null = null;
   private readonly keys = new Set<number>();
@@ -322,6 +325,7 @@ export class CampusBootstrap extends Component {
       const cur = this.gateOpen[x.id] || 0;
       const open = cur + (target - cur) * Math.min(1, dt * 5);
       this.gateOpen[x.id] = open;
+      if (cur < 0.2 && open > 0.35) this.sfx.gate();
       const s = 1 - 0.85 * open;
       x.pivot.setScale(s, 1, 1);
     }
@@ -339,6 +343,7 @@ export class CampusBootstrap extends Component {
       const cur = this.doorOpen[e.id] || 0;
       const open = cur + (target - cur) * Math.min(1, dt * 5);
       this.doorOpen[e.id] = open;
+      if (cur < 0.2 && open > 0.35) this.sfx.door();
       if (e.dark) this.drawDoorDark(e.dark, b, open);
       if (e.L) this.updateDoorPanel(e.L, b, 'L', open);
       if (e.R) this.updateDoorPanel(e.R, b, 'R', open);
@@ -744,7 +749,8 @@ export class CampusBootstrap extends Component {
   // ---------- 输入 ----------
   private bindInput() {
     input.on(Input.EventType.KEY_DOWN, (e: EventKeyboard) => {
-      if (this.intro) { this.skipIntro(); return; }
+      if (this.intro) { this.skipIntro(); this.sfx.unlock(); return; }
+      this.sfx.unlock();
       this.keys.add(e.keyCode);
       if (e.keyCode === KeyCode.KEY_W || e.keyCode === KeyCode.ARROW_UP ||
           e.keyCode === KeyCode.KEY_S || e.keyCode === KeyCode.ARROW_DOWN ||
@@ -753,10 +759,10 @@ export class CampusBootstrap extends Component {
     }, this);
     input.on(Input.EventType.KEY_UP, (e: EventKeyboard) => this.keys.delete(e.keyCode), this);
 
-    input.on(Input.EventType.TOUCH_START, this.onTouchStart, this);
+    input.on(Input.EventType.TOUCH_START, (e: EventTouch) => { this.sfx.unlock(); this.onTouchStart(e); }, this);
     input.on(Input.EventType.TOUCH_MOVE, this.onTouchMove, this);
     input.on(Input.EventType.TOUCH_END, this.onTouchEnd, this);
-    input.on(Input.EventType.MOUSE_WHEEL, this.onWheel, this);
+    input.on(Input.EventType.MOUSE_WHEEL, (e: EventMouse) => { this.sfx.unlock(); this.onWheel(e); }, this);
   }
 
   private onTouchStart(e: EventTouch) {
@@ -874,6 +880,15 @@ export class CampusBootstrap extends Component {
   }
 
   // ---------- 玩家移动 ----------
+  private footstep(dt: number, run: boolean) {
+    this.stepT += dt;
+    const interval = run ? 0.23 : 0.34;
+    if (this.stepT >= interval) {
+      this.stepT = 0;
+      this.sfx.step(run);
+    }
+  }
+
   update(dt: number) {
     if (!this.player) return;
     this.elapsed += dt;
@@ -910,6 +925,7 @@ export class CampusBootstrap extends Component {
       ng = imageToGrid(this.playerImg.x, ny);
       if (!isBlocked(ng.gx, ng.gy, BUILDINGS, this.gateOpen)) this.playerImg.y = ny;
       this.phase += dt * (this.runLock ? 13 : 9);
+      this.footstep(dt, this.runLock);
       this.follow = true; this.updateFollowBtn();
     } else if (this.navPath && this.navPath.length) {
       const tgt = this.navPath[0];
@@ -921,6 +937,7 @@ export class CampusBootstrap extends Component {
         if (!this.navPath.length) {
           this.navPath = null; this.moving = false; this.running = false;
           this.setNavTip(this.navName ? '已到达：' + this.navName : '已到达', true);
+          this.sfx.arrive();
           this.navName = '';
         }
       } else {
@@ -946,6 +963,7 @@ export class CampusBootstrap extends Component {
           if (this.navStuck > 10) { this.navPath.shift(); this.navStuck = 0; }
         } else this.navStuck = 0;
         this.phase += dt * (this.runLock ? 13 : 9);
+        this.footstep(dt, this.runLock);
         this.follow = true; this.updateFollowBtn();
       }
     } else {
@@ -1000,14 +1018,20 @@ export class CampusBootstrap extends Component {
       this.canvas.addChild(n);
       return n;
     };
-    this.btnFollow = mk('跟随角色', vs.x / 2 - 220, vs.y / 2 - 40, () => { this.follow = true; this.updateFollowBtn(); });
-    mk('重置视角', vs.x / 2 - 90, vs.y / 2 - 40, () => { this.follow = false; this.centerView(); this.updateFollowBtn(); });
+    this.btnFollow = mk('跟随角色', vs.x / 2 - 220, vs.y / 2 - 40, () => { this.sfx.ui(); this.follow = true; this.updateFollowBtn(); });
+    mk('重置视角', vs.x / 2 - 90, vs.y / 2 - 40, () => { this.sfx.ui(); this.follow = false; this.centerView(); this.updateFollowBtn(); });
     // 跑步开关
     this.btnRun = mk('跑步：关', vs.x / 2 - 350, vs.y / 2 - 40, () => {
+      this.sfx.ui();
       this.runLock = !this.runLock;
       this.btnRun.getComponentInChildren(Label)!.string = '跑步：' + (this.runLock ? '开' : '关');
       this.fillRound(this.btnRun, 120, 40,
         this.runLock ? new Color(45, 108, 223, 255) : new Color(40, 58, 88, 240), 8);
+    });
+    // 音效开关
+    const btnMute = mk('音效：开', vs.x / 2 + 40, vs.y / 2 - 40, () => {
+      const m = this.sfx.toggleMute();
+      btnMute.getComponentInChildren(Label)!.string = '音效：' + (m ? '关' : '开');
     });
 
     // 信息面板（默认隐藏，中心锚点）
@@ -1056,7 +1080,7 @@ export class CampusBootstrap extends Component {
     const cl = close.addComponent(Label); cl.string = '×'; cl.fontSize = 28; cl.color = new Color(255, 255, 255);
     close.setPosition(140, 212, 0);
     close.addComponent(Button);
-    close.on(Button.EventType.CLICK, () => { this.panel.active = false; }, this);
+    close.on(Button.EventType.CLICK, () => { this.sfx.ui(); this.panel.active = false; }, this);
     panel.addChild(close);
     // 前往这里
     const gotoBtn = new Node('GotoBtn'); gotoBtn.layer = UI;
@@ -1068,6 +1092,7 @@ export class CampusBootstrap extends Component {
     gotoBtn.addChild(gln);
     gotoBtn.addComponent(Button);
     gotoBtn.on(Button.EventType.CLICK, () => {
+      this.sfx.ui();
       if (this.currentBuilding) this.navigateToBuilding(this.currentBuilding);
     }, this);
     gotoBtn.setPosition(0, -195, 0);

@@ -7,6 +7,147 @@
   const TD = window.TOPDOWN_DATA;
   const [GX0, GY0, GX1, GY1] = D.meta.gridRange;
 
+  // ---------- 音效（Web Audio 合成，零外部文件；首次交互后启动，兼容移动端） ----------
+  const SFX = (function () {
+    let ctx = null, master = null, ambientOn = false;
+    let muted = false;
+    function ensure() {
+      if (ctx) { if (ctx.state === "suspended") ctx.resume(); return ctx; }
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      ctx = new AC();
+      master = ctx.createGain();
+      master.gain.value = 0.5;
+      master.connect(ctx.destination);
+      return ctx;
+    }
+    // 短噪声缓冲（脚步/门）
+    function noiseBuf(seconds) {
+      const c = ctx, len = Math.floor(c.sampleRate * seconds);
+      const b = c.createBuffer(1, len, c.sampleRate);
+      const d = b.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      return b;
+    }
+    // 脚步声：软质短噪声（走路闷、跑步脆）
+    function step(run) {
+      const c = ensure(); if (!c || muted) return;
+      const t = c.currentTime;
+      const src = c.createBufferSource();
+      src.buffer = noiseBuf(0.08);
+      const f = c.createBiquadFilter();
+      f.type = "lowpass";
+      f.frequency.value = run ? 480 : 320;
+      const g = c.createGain();
+      const vol = run ? 0.22 : 0.14;
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+      src.connect(f); f.connect(g); g.connect(master);
+      src.start(t); src.stop(t + 0.09);
+    }
+    // 门吱呀：低频锯齿 + 频率滑动
+    function door() {
+      const c = ensure(); if (!c || muted) return;
+      const t = c.currentTime;
+      const o = c.createOscillator();
+      o.type = "sawtooth";
+      o.frequency.setValueAtTime(120, t);
+      o.frequency.exponentialRampToValueAtTime(70, t + 0.5);
+      const f = c.createBiquadFilter();
+      f.type = "bandpass"; f.frequency.value = 300; f.Q.value = 6;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.12, t + 0.08);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+      o.connect(f); f.connect(g); g.connect(master);
+      o.start(t); o.stop(t + 0.65);
+    }
+    // 校门伸缩门：金属滑动（带通噪声）
+    function gate() {
+      const c = ensure(); if (!c || muted) return;
+      const t = c.currentTime;
+      const src = c.createBufferSource();
+      src.buffer = noiseBuf(0.7);
+      const f = c.createBiquadFilter();
+      f.type = "bandpass"; f.frequency.value = 900; f.Q.value = 2;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.1, t + 0.1);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+      src.connect(f); f.connect(g); g.connect(master);
+      src.start(t); src.stop(t + 0.72);
+    }
+    // UI 点击：短促清亮
+    function ui() {
+      const c = ensure(); if (!c || muted) return;
+      const t = c.currentTime;
+      const o = c.createOscillator();
+      o.type = "square";
+      o.frequency.setValueAtTime(660, t);
+      o.frequency.exponentialRampToValueAtTime(880, t + 0.05);
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.08, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+      o.connect(g); g.connect(master);
+      o.start(t); o.stop(t + 0.09);
+    }
+    // 到达提示音
+    function arrive() {
+      const c = ensure(); if (!c || muted) return;
+      const t = c.currentTime;
+      [523, 659, 784].forEach((fr, i) => {
+        const o = c.createOscillator(); o.type = "triangle";
+        o.frequency.value = fr;
+        const g = c.createGain();
+        const st = t + i * 0.09;
+        g.gain.setValueAtTime(0.0001, st);
+        g.gain.exponentialRampToValueAtTime(0.12, st + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, st + 0.25);
+        o.connect(g); g.connect(master);
+        o.start(st); o.stop(st + 0.27);
+      });
+    }
+    // 环境音：微风（持续低通噪声）+ 偶尔鸟鸣（两短音）
+    function startAmbient() {
+      const c = ensure(); if (!c || ambientOn) return;
+      ambientOn = true;
+      // 微风
+      const src = c.createBufferSource();
+      src.buffer = noiseBuf(2); src.loop = true;
+      const f = c.createBiquadFilter();
+      f.type = "lowpass"; f.frequency.value = 240;
+      const g = c.createGain(); g.gain.value = 0.05;
+      src.connect(f); f.connect(g); g.connect(master);
+      src.start();
+      // 鸟鸣循环
+      function bird() {
+        if (!ambientOn) return;
+        if (!muted && ctx) {
+          const t = ctx.currentTime;
+          const o = ctx.createOscillator(); o.type = "sine";
+          o.frequency.setValueAtTime(1800 + Math.random() * 600, t);
+          o.frequency.exponentialRampToValueAtTime(2600, t + 0.08);
+          o.frequency.exponentialRampToValueAtTime(2000, t + 0.16);
+          const bg = ctx.createGain();
+          bg.gain.setValueAtTime(0.0001, t);
+          bg.gain.exponentialRampToValueAtTime(0.05, t + 0.04);
+          bg.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+          o.connect(bg); bg.connect(master);
+          o.start(t); o.stop(t + 0.22);
+        }
+        setTimeout(bird, 3000 + Math.random() * 6000);
+      }
+      setTimeout(bird, 2000);
+    }
+    function unlock() { ensure(); startAmbient(); }
+    function toggleMute() {
+      muted = !muted;
+      if (master) master.gain.value = muted ? 0 : 0.5;
+      return muted;
+    }
+    return { unlock, step, door, gate, ui, arrive, toggleMute, get muted() { return muted; } };
+  })();
+
   // ---------- 等距投影（2:1 菱形，星露谷式）：逻辑网格与投影解耦 ----------
   // 逻辑网格 gx(东)/gy(南) 为整数；等距世界坐标：
   //   isoX=(gx-gy)*TW/2（东→右下、南→左下），isoY=(gx+gy)*TH/2（南角在画面最下）。
@@ -76,6 +217,9 @@
   }
   // 开场期间点任意元素（含 HUD/摇杆）都跳过——用捕获阶段统一处理
   document.addEventListener("pointerdown", () => { if (intro) skipIntro(); }, true);
+  // 首次交互解锁音频（移动端必须在用户手势内创建 AudioContext）
+  document.addEventListener("pointerdown", () => SFX.unlock(), true);
+  window.addEventListener("keydown", () => SFX.unlock());
   function updateIntro(dt) {
     if (!intro) return;
     intro.t += dt;
@@ -474,10 +618,19 @@
   const playerScreen = () => ({ sx: w2sX(isoX(player.wx, player.wy)), sy: w2sY(isoY(player.wx, player.wy)) });
   const player = {
     wx: start.x, wy: start.y, phase: 0, idleT: 0, moving: false,
-    running: false, runLock: false, facing: "down", dustT: 0,
+    running: false, runLock: false, facing: "down", dustT: 0, stepT: 0,
     navPath: null, navName: "", mvx: 0, mvy: 1
   };
   const dust = [];
+  // 脚步声节拍（走路约 0.34s/步，跑步约 0.23s/步）
+  function footstep(dt, run) {
+    player.stepT += dt;
+    const interval = run ? 0.23 : 0.34;
+    if (player.stepT >= interval) {
+      player.stepT = 0;
+      SFX.step(run);
+    }
+  }
   function spawnDust() {
     dust.push({
       x: player.wx - player.mvx * 0.28 + (Math.random() - 0.5) * 0.18,
@@ -1283,6 +1436,7 @@
       moveBy(dx, dy, (wantRun ? RUN_SPEED : WALK_SPEED) * dt);
       player.phase += dt * (wantRun ? 14.5 : 9);
       player.idleT = 0;
+      footstep(dt, wantRun);
       if (wantRun) { player.dustT += dt; if (player.dustT > 0.12) { player.dustT = 0; spawnDust(); } }
       follow = true; updateFollowBtn();
     } else if (player.navPath && player.navPath.length) {
@@ -1296,6 +1450,7 @@
         if (!player.navPath.length) {
           player.navPath = null; player.moving = false; player.running = false;
           setNavTip(player.navName ? "已到达：" + player.navName : "已到达", true);
+          SFX.arrive();
           player.navName = "";
         }
       } else {
@@ -1323,6 +1478,7 @@
         else navStuck = 0;
         player.phase += dt * (fast ? 14.5 : 11.5);
         player.idleT = 0;
+        footstep(dt, fast);
         player.dustT += dt; if (player.dustT > 0.14) { player.dustT = 0; spawnDust(); }
         follow = true; updateFollowBtn();
       }
@@ -1348,7 +1504,9 @@
     for (const F of fences) {
       const g = F.g;
       const dist = Math.hypot(pg.gx - g.cx, pg.gy - g.cy);
+      const prev = F.open;
       F.open += ((dist < GATE_HALF + 5.5 ? 1 : 0) - F.open) * k;
+      if (prev < 0.2 && F.open > 0.35) SFX.gate();
       const nowIn = insideField(pg.gx, pg.gy, F);
       if (nowIn && !F.inside) showZone("进入 · " + F.zone, "由入口门进入，场内可自由行走");
       F.inside = nowIn;
@@ -1356,13 +1514,17 @@
     // 东西伸缩门：接近门中线即收拢放行（阈值略大于闭合阻挡半径，避免自动寻路在门前死锁）
     for (const g of campusGates) {
       const dist = Math.hypot(pg.gx - g.cx, pg.gy - g.cy);
+      const prev = g.open;
       g.open += ((dist < 7.5 ? 1 : 0) - g.open) * k;
+      if (prev < 0.2 && g.open > 0.35) SFX.gate();
     }
     // 建筑门：靠近南墙门中线即向内打开
     for (const d of buildingDoors) {
       if (window.__freezeDoors) continue;
       const dist = Math.hypot(pg.gx - d.cx, pg.gy - d.cy);
+      const prev = d.open;
       d.open += ((dist < 5.5 ? 1 : 0) - d.open) * k;
+      if (prev < 0.2 && d.open > 0.35) SFX.door();
     }
   }
 
@@ -1503,25 +1665,36 @@
     img.style.visibility = meta ? "visible" : "hidden";
     document.getElementById("info").classList.add("show");
   }
-  document.getElementById("infoClose").onclick = () =>
+  document.getElementById("infoClose").onclick = () => {
+    SFX.ui();
     document.getElementById("info").classList.remove("show");
-  document.getElementById("btnGoto").onclick = () => { if (currentBuilding) navigateToBuilding(currentBuilding); };
+  };
+  document.getElementById("btnGoto").onclick = () => {
+    SFX.ui();
+    if (currentBuilding) navigateToBuilding(currentBuilding);
+  };
 
   // ---------- 按钮 ----------
   const btnFollow = document.getElementById("btnFollow");
   function updateFollowBtn() { btnFollow.classList.toggle("active", follow); }
-  btnFollow.onclick = () => { follow = true; updateFollowBtn(); };
+  btnFollow.onclick = () => { SFX.ui(); follow = true; updateFollowBtn(); };
   const btnRun = document.getElementById("btnRun");
   function updateRunBtn() {
     btnRun.textContent = "跑步：" + (player.runLock ? "开" : "关");
     btnRun.classList.toggle("run-active", player.runLock);
   }
-  btnRun.onclick = () => { player.runLock = !player.runLock; updateRunBtn(); };
+  btnRun.onclick = () => { SFX.ui(); player.runLock = !player.runLock; updateRunBtn(); };
   document.getElementById("btnReset").onclick = () => {
+    SFX.ui();
     follow = false; centerView(); updateFollowBtn();
   };
+  const btnMute = document.getElementById("btnMute");
+  btnMute.onclick = () => {
+    const m = SFX.toggleMute();
+    btnMute.textContent = "音效：" + (m ? "关" : "开");
+  };
   window.__map = {
-    view, player, buildings: D.buildings,
+    view, player, buildings: D.buildings, sfx: SFX,
     worldToScreen: (wx, wy) => ({ x: w2sX(wx), y: w2sY(wy) }),
     select: b => showInfo(b),
     gotoBuilding: id => { const b = D.buildings.find(x => x.id === id); if (b) navigateToBuilding(b); },
