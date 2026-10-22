@@ -2183,6 +2183,8 @@
     const meta = TD.sprites && TD.sprites[b.id];
     img.src = meta ? meta.file : "";
     img.style.visibility = meta ? "visible" : "hidden";
+    // 可进入建筑才显示"进入建筑"
+    document.getElementById("btnEnter").style.display = DOOR_SPEC[b.id] ? "block" : "none";
     document.getElementById("info").classList.add("show");
   }
   document.getElementById("infoClose").onclick = () => {
@@ -2192,6 +2194,13 @@
   document.getElementById("btnGoto").onclick = () => {
     SFX.ui();
     if (currentBuilding) navigateToBuilding(currentBuilding);
+  };
+  document.getElementById("btnEnter").onclick = () => {
+    SFX.ui();
+    if (!currentBuilding || !DOOR_SPEC[currentBuilding.id]) return;
+    // 关闭信息卡，直接黑屏进入室内（无需走到门口）
+    document.getElementById("info").classList.remove("show");
+    enterBuilding(currentBuilding);
   };
 
   // ---------- 按钮 ----------

@@ -68,6 +68,7 @@ export class CampusBootstrap extends Component {
   private elapsed = 0;
   private navTipUntil = -1;
   private currentBuilding: CampusBuilding | null = null;
+  private enterBtn: Node | null = null;
   private pathGfx: Graphics | null = null;
   private navTip: Label | null = null;
 
@@ -1151,10 +1152,31 @@ export class CampusBootstrap extends Component {
     close.addComponent(Button);
     close.on(Button.EventType.CLICK, () => { this.sfx.ui(); this.panel.active = false; }, this);
     panel.addChild(close);
-    // 前往这里
+    // 进入建筑（绿色，仅可进入建筑显示）
+    const enterBtn = new Node('EnterBtn'); enterBtn.layer = UI;
+    enterBtn.addComponent(UITransform).setContentSize(145, 38);
+    this.fillRound(enterBtn, 145, 38, new Color(46, 158, 91, 255), 8);
+    const eln = new Node('L'); eln.layer = UI; eln.addComponent(UITransform);
+    const el = eln.addComponent(Label); el.string = '进入建筑'; el.fontSize = 18; el.lineHeight = 22;
+    el.color = new Color(255, 255, 255);
+    enterBtn.addChild(eln);
+    enterBtn.addComponent(Button);
+    enterBtn.on(Button.EventType.CLICK, () => {
+      this.sfx.ui();
+      if (!this.currentBuilding || !DOOR_SPEC[this.currentBuilding.id] || !this.interior) return;
+      this.panel.active = false;
+      this.lastInteriorId = this.currentBuilding.id;
+      this.interior.enter(this.currentBuilding, () => { });
+    }, this);
+    enterBtn.setPosition(-78, -195, 0);
+    enterBtn.active = false;
+    panel.addChild(enterBtn);
+    this.enterBtn = enterBtn;
+
+    // 前往这里（蓝色）
     const gotoBtn = new Node('GotoBtn'); gotoBtn.layer = UI;
-    gotoBtn.addComponent(UITransform).setContentSize(200, 38);
-    this.fillRound(gotoBtn, 200, 38, new Color(45, 108, 223, 255), 8);
+    gotoBtn.addComponent(UITransform).setContentSize(145, 38);
+    this.fillRound(gotoBtn, 145, 38, new Color(45, 108, 223, 255), 8);
     const gln = new Node('L'); gln.layer = UI; gln.addComponent(UITransform);
     const gl = gln.addComponent(Label); gl.string = '前往这里'; gl.fontSize = 18; gl.lineHeight = 22;
     gl.color = new Color(255, 255, 255);
@@ -1164,7 +1186,7 @@ export class CampusBootstrap extends Component {
       this.sfx.ui();
       if (this.currentBuilding) this.navigateToBuilding(this.currentBuilding);
     }, this);
-    gotoBtn.setPosition(0, -195, 0);
+    gotoBtn.setPosition(78, -195, 0);
     panel.addChild(gotoBtn);
 
     // 寻路提示（底部居中）
@@ -1198,6 +1220,11 @@ export class CampusBootstrap extends Component {
     this.panelUIs.name!.string = b.name;
     this.panelUIs.tag!.string = GROUP_CN[b.group] || b.group;
     this.panelUIs.desc!.string = b.desc || '';
+    // 可进入建筑：显示进入按钮，前往按钮偏右；否则前往按钮居中
+    const canEnter = !!DOOR_SPEC[b.id];
+    if (this.enterBtn) this.enterBtn.active = canEnter;
+    const gotoBtn = this.panel.getChildByName('GotoBtn');
+    if (gotoBtn) gotoBtn.setPosition(canEnter ? 78 : 0, -195, 0);
     // 配图：复用地图上已加载的同栋 SpriteFrame，contain 到 280×142
     const entry = this.buildingNodes.find(x => x.b === b);
     const sf = entry ? entry.node.getComponent(Sprite)!.spriteFrame : null;
