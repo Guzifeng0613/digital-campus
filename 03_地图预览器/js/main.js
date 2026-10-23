@@ -1259,6 +1259,8 @@
   const fadeEl = document.getElementById("fadeOverlay");
   const iHud = document.getElementById("interiorHud");
   const iNameEl = document.getElementById("interiorName");
+  const exitBtn = document.getElementById("exitBtn");
+  if (exitBtn) exitBtn.addEventListener("click", () => { if (interior.active) exitBuilding(); });
   let iScale = 30, iox = 0, ioy = 0;
   function roomToScreen(rx, ry) {
     return { x: iox + rx * iScale, y: ioy + ry * iScale };
@@ -2701,10 +2703,23 @@ function drawFences(F) {
   addDeco("tree_oak", -20.0, 213.3); addDeco("tree_oak", 8.2, 213.3);
   addDeco("tree_oak_b", -20.0, 261.9); addDeco("tree_oak", 8.2, 261.9);
   // 主路两侧路灯（南北向主路，整体放大后 gx≈51 / 106）
-  for (let gy = 55; gy <= 302; gy += 23) { addDeco("lamp", 51.0, gy); addDeco("lamp", 106.0, gy + 9); }
+  // 路灯在 scatterGreenery（buildNavMesh 之后）里放置，以便自动避开道路、贴到草地边缘
+  function addLamp(gx, gy) {
+    if (groundWalkable(gx, gy)) {
+      let best = null;
+      for (let r = 1; r <= 9 && !best; r++) {
+        for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, -r], [r, -r], [-r, r]]) {
+          const nx = gx + dx, ny = gy + dy;
+          if (!groundWalkable(nx, ny) && !buildingBlocked(nx, ny)) { best = [nx, ny]; break; }
+        }
+      }
+      if (best) { gx = best[0]; gy = best[1]; }
+    }
+    addDeco("lamp", gx, gy);
+  }
   // TEACH-1 双D中轴门洞内的绿地/铺装已在 sprite 内绘制，不再外挂花坛，避免网格错位
-  // LIB 门前长椅+灌木
-  addDeco("bench", 85.8, 151.7); addDeco("bench", 94.5, 151.7);
+  // LIB 门前长椅（放在台阶南侧草地，避开台阶/斜坡建筑基底与道路）
+  addDeco("bench", 90.0, 157.0); addDeco("bench", 97.0, 157.0);
   addDeco("shrub_a", 77.1, 150.9); addDeco("shrub_b", 107.5, 150.9);
   // 食堂/文理楼周边矮灌
   addDeco("tree_bush", 24.9, 110.3); addDeco("tree_bush", 7.5, 156.8);
@@ -2712,6 +2727,8 @@ function drawFences(F) {
   // 沿环路外围草地程序化散布（确定性伪随机，避开道路/建筑/水体）
   // 必须在 buildNavMesh 后调用（groundWalkable 依赖 navMask）
   function scatterGreenery() {
+    // 主路两侧路灯（navMask 已就绪，addLamp 会自动把落在道路上的路灯贴到草地边缘）
+    for (let gy = 55; gy <= 302; gy += 23) { addLamp(51.0, gy); addLamp(106.0, gy + 9); }
     let _s = 1234567;
     const rnd = () => { _s = (_s * 1664525 + 1013904223) >>> 0; return _s / 4294967296; };
     const inWater = (gx, gy) => {
