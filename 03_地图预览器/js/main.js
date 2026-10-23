@@ -2112,7 +2112,9 @@
       if (window.__freezeDoors) continue;
       const dist = Math.hypot(pg.gx - d.cx, pg.gy - d.cy);
       const prev = d.open;
-      d.open += ((dist < 5.5 ? 1 : 0) - d.open) * k;
+      // 不完全开到 90°（等距投影下 90° 门板会退化成竖直的线、看似消失）；
+      // 限到 75°，门板保持向里打开的可见斜向面板，门洞仍为暗色空洞
+      d.open += ((dist < 5.5 ? DOOR_MAX_OPEN : 0) - d.open) * k;
       if (prev < 0.2 && d.open > 0.35) SFX.door();
     }
   }
@@ -2479,6 +2481,7 @@
   }
   // 建筑门：复用 sprite 已有门（裁剪门扇纹理），靠近时绕竖直门轴向内转 90°
   const DOOR_ZK = 32;                        // 竖直 z 轴的屏幕像素比例（与 tile 同）
+  const DOOR_MAX_OPEN = 0.75;                // 最大开门角（90° 门板在等距投影下会退化成线）
   function drawBuildingDoor(d) {
     const z = view.zoom;
     const open = d.open;
