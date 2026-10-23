@@ -584,7 +584,7 @@
     ...DOOR_IDS.map(id => Promise.all([
       loadImg("img/topdown/doors/" + id + "_L.png?av=v20").then(im => spriteImgs[id + "_doorL"] = im),
       loadImg("img/topdown/doors/" + id + "_R.png?av=v20").then(im => spriteImgs[id + "_doorR"] = im),
-      loadImg("img/topdown/doors/" + id + "_interior.png?av=v21").then(im => spriteImgs[id + "_interior"] = im).catch(() => null)
+      loadImg("img/topdown/doors/" + id + "_interior.png?av=v22").then(im => spriteImgs[id + "_interior"] = im).catch(() => null)
     ])),
     ...["GATE-W", "GATE-E"].map(id =>
       Promise.all([
