@@ -105,15 +105,15 @@ export interface SpriteGeometry {
 
 // ---------- 建筑门（复用 sprite 已有门，门扇绕外侧门轴向内打开）：TEACH-1 为大拱门穿堂，不设门 ----------
 export const DOOR_SPEC: Record<string, { bl: number[]; br: number[]; H: number }> = {
-  "WENLI": { bl: [145.915, 149.267], br: [148.144, 146.929], H: 3.938 },
-  "LIB": { bl: [94.179, 149.385], br: [95.273, 148.291], H: 3.090 },
-  "ACT": { bl: [41.045, 125.574], br: [41.947, 124.671], H: 2.346 },
-  "CAN-YULAN": { bl: [25.376, 90.839], br: [26.361, 89.417], H: 3.784 },
-  "CAN-ZIZHU": { bl: [20.823, 149.396], br: [21.891, 148.328], H: 2.297 },
-  "GYM": { bl: [64.325, 286.539], br: [67.339, 283.525], H: 3.609 },
-  "TEACH-2": { bl: [80.398, 113.543], br: [82.203, 111.739], H: 2.418 },
-  "ENG-TRAIN": { bl: [120.151, 59.070], br: [120.620, 58.600], H: 2.844 },
-  "LAB-TECH": { bl: [126.404, 206.748], br: [128.591, 204.561], H: 3.151 }
+  "WENLI": { bl: [145.45, 148.802], br: [147.638, 146.615], H: 4.38 },
+  "LIB": { bl: [94.029, 149.535], br: [95.341, 148.222], H: 1.23 },
+  "ACT": { bl: [40.143, 126.115], br: [42.218, 124.04], H: 1.7 },
+  "CAN-YULAN": { bl: [24.283, 90.183], br: [25.267, 89.198], H: 2.19 },
+  "CAN-ZIZHU": { bl: [20.674, 148.948], br: [21.937, 147.685], H: 2.3 },
+  "GYM": { bl: [66.257, 283.164], br: [68.061, 281.359], H: 3.61 },
+  "TEACH-2": { bl: [79.55, 112.226], br: [80.633, 111.143], H: 2.17 },
+  "ENG-TRAIN": { bl: [118.218, 59.126], br: [119.355, 57.989], H: 3.41 },
+  "LAB-TECH": { bl: [127.485, 206.889], br: [129.367, 205.008], H: 3.29 }
 };
 export interface DoorGeom {
   // 门洞中心（网格，触发判定）
@@ -305,7 +305,7 @@ export function findPath(sg: {gx:number;gy:number}, tg: {gx:number;gy:number},
   if (uvBlocked(U1, V1, buildings, gateOpen, fences)) return null;
   const key = (u: number, v: number) => u + "," + v;
   const queue: number[][] = [[U0, V0]]; let head = 0;
-  const prev = new Map<string, number[]>();
+  const prev = new Map<string, number[] | null>();
   prev.set(key(U0, V0), null);
   let found = false;
   while (head < queue.length) {
@@ -323,7 +323,7 @@ export function findPath(sg: {gx:number;gy:number}, tg: {gx:number;gy:number},
   }
   if (!found) return null;
   const path: {gx:number;gy:number}[] = [];
-  let cur: number[] = [U1, V1];
+  let cur: number[] | null | undefined = [U1, V1];
   while (cur) {
     path.push({ gx: (cur[0] + cur[1]) / 2, gy: (cur[0] - cur[1]) / 2 });
     cur = prev.get(key(cur[0], cur[1]));
@@ -336,7 +336,7 @@ export function nearestOpenGrid(gx: number, gy: number, fx: number, fy: number,
                                 buildings: CampusBuilding[], gateOpen: GateOpen | null = null): {gx:number;gy:number} | null {
   if (!navBlocked(gx, gy, buildings, gateOpen)) return { gx, gy };
   for (let ring = 1; ring <= 10; ring++) {
-    let best: {gx:number;gy:number} = null, bd = Infinity;
+    let best: {gx:number;gy:number} | null = null, bd = Infinity;
     for (let dx = -ring; dx <= ring; dx++) for (let dy = -ring; dy <= ring; dy++) {
       if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
       const x = gx + dx * NAV_STEP, y = gy + dy * NAV_STEP;
@@ -365,7 +365,7 @@ function openSpotsAround(b: CampusBuilding, fx: number, fy: number,
 export function pathToBuilding(b: CampusBuilding, fx: number, fy: number,
                                buildings: CampusBuilding[], gateOpen: GateOpen | null = null): {gx:number;gy:number}[] | null {
   const spots = openSpotsAround(b, fx, fy, buildings, gateOpen).slice(0, 12);
-  let best: {gx:number;gy:number}[] = null, bestLen = Infinity;
+  let best: {gx:number;gy:number}[] | null = null, bestLen = Infinity;
   for (const s of spots) {
     const p = findPath({ gx: fx, gy: fy }, s, buildings, gateOpen);
     if (p && p.length < bestLen) { bestLen = p.length; best = p; }

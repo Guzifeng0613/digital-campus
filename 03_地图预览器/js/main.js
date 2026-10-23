@@ -583,7 +583,8 @@
     ...DECOR_IDS.map(t => loadImg("img/topdown/decor/" + t + ".png?av=v20").then(im => spriteImgs[t] = im)),
     ...DOOR_IDS.map(id => Promise.all([
       loadImg("img/topdown/doors/" + id + "_L.png?av=v20").then(im => spriteImgs[id + "_doorL"] = im),
-      loadImg("img/topdown/doors/" + id + "_R.png?av=v20").then(im => spriteImgs[id + "_doorR"] = im)
+      loadImg("img/topdown/doors/" + id + "_R.png?av=v20").then(im => spriteImgs[id + "_doorR"] = im),
+      loadImg("img/topdown/doors/" + id + "_interior.png?av=v21").then(im => spriteImgs[id + "_interior"] = im).catch(() => null)
     ])),
     ...["GATE-W", "GATE-E"].map(id =>
       Promise.all([
@@ -995,6 +996,26 @@
         if (best) { paintLink(px, py, best[0], best[1], RR); paintDisk(px, py, RR + 2); }
       }
     }
+    // 8) 凹入式门廊（cutout）直接涂进 navWalk：门廊是 building 内凹的真实开口，
+    //    不在 navMask 图像里，需在栅格上按玩家半径补白，保证 BFS 能走进门廊到玻璃门前。
+    for (const id in BUILDING_CUTOUTS) {
+      for (const c of BUILDING_CUTOUTS[id]) {
+        const ax = c.bl[0], ay = c.bl[1], bx = c.br[0], by = c.br[1];
+        let ux = bx - ax, uy = by - ay; const L = Math.hypot(ux, uy); ux /= L; uy /= L;
+        let nx = -uy, ny = ux;
+        const b = D.buildings.find(x => x.id === id);
+        const ccx = b.grid[0] + b.grid[2] / 2, ccy = b.grid[1] + b.grid[3] / 2;
+        const mx = (ax + bx) / 2, my = (ay + by) / 2;
+        if (nx * (ccx - mx) + ny * (ccy - my) > 0) { nx = -nx; ny = -ny; }
+        for (let t = 0; t <= L + 0.01; t += 0.6) {
+          for (let s = 0; s <= c.depth + 0.01; s += 0.6) {
+            const gx = ax + ux * t + nx * s, gy = ay + uy * t + ny * s;
+            const [px, py] = g2n(gx, gy);
+            paintDisk(px, py, ER + 2, true);
+          }
+        }
+      }
+    }
     plog('after7 gx113: 180=' + probe(113, 180) + ' 200=' + probe(113, 200) + ' 220=' + probe(113, 220) + ' 237=' + probe(113, 237));
   }
   function groundWalkable(gx, gy, pad) {
@@ -1064,16 +1085,57 @@
   // 每栋门 = 左右铰链（门底，网格）+ 门高（网格），门扇纹理从 sprite 门裁剪（_L/_R）。
   // TEACH-1 为大拱门穿堂，不设门扇。
   const DOOR_SPEC = {
-    WENLI: { bl: [145.915, 149.267], br: [148.144, 146.929], H: 3.938 },
-    LIB: { bl: [94.179, 149.385], br: [95.273, 148.291], H: 3.090 },
-    ACT: { bl: [41.045, 125.574], br: [41.947, 124.671], H: 2.346 },
-    "CAN-YULAN": { bl: [25.376, 90.839], br: [26.361, 89.417], H: 3.784 },
-    "CAN-ZIZHU": { bl: [20.823, 149.396], br: [21.891, 148.328], H: 2.297 },
-    GYM: { bl: [64.325, 286.539], br: [67.339, 283.525], H: 3.609 },
-    "TEACH-2": { bl: [80.398, 113.543], br: [82.203, 111.739], H: 2.418 },
-    "ENG-TRAIN": { bl: [120.151, 59.070], br: [120.620, 58.600], H: 2.844 },
-    "LAB-TECH": { bl: [126.404, 206.748], br: [128.591, 204.561], H: 3.151 }
+    WENLI: { bl: [145.45, 148.802], br: [147.638, 146.615], H: 4.38 },
+    LIB: { bl: [94.029, 149.535], br: [95.341, 148.222], H: 1.23 },
+    ACT: { bl: [40.143, 126.115], br: [42.218, 124.04], H: 1.7 },
+    "CAN-YULAN": { bl: [24.283, 90.183], br: [25.267, 89.198], H: 2.19 },
+    "CAN-ZIZHU": { bl: [20.674, 148.948], br: [21.937, 147.685], H: 2.3 },
+    GYM: { bl: [66.257, 283.164], br: [68.061, 281.359], H: 3.61 },
+    "TEACH-2": { bl: [79.55, 112.226], br: [80.633, 111.143], H: 2.17 },
+    "ENG-TRAIN": { bl: [118.218, 59.126], br: [119.355, 57.989], H: 3.41 },
+    "LAB-TECH": { bl: [127.485, 206.889], br: [129.367, 205.008], H: 3.29 }
   };
+  // 建筑可通行挖空区：凹入式门廊/门庭（building 被切出的矩形开口），从碰撞与 navMask 中放行。
+  // 每条 cutout：{bl, br} 为门廊后墙（玻璃门所在）的两端，depth 为向外（背离建筑）的深度。
+  const BUILDING_CUTOUTS = {
+    GYM: [{ bl: [65.5, 285.5], br: [71.0, 280.0], depth: 11.5 }],
+    LIB: [{ bl: [93.81, 149.75], br: [100.65, 142.91], depth: 1.6 }],
+    WENLI: [{ bl: [145.45, 148.802], br: [147.638, 146.615], depth: 6 }],
+    ACT: [{ bl: [40.143, 126.115], br: [42.218, 124.04], depth: 6 }],
+    "CAN-YULAN": [{ bl: [24.283, 90.183], br: [25.267, 89.198], depth: 6 }],
+    "CAN-ZIZHU": [{ bl: [20.674, 148.948], br: [21.937, 147.685], depth: 6 }],
+    "TEACH-2": [{ bl: [79.55, 112.226], br: [80.633, 111.143], depth: 6 }],
+    "ENG-TRAIN": [{ bl: [118.218, 59.126], br: [119.355, 57.989], depth: 6 }],
+    "LAB-TECH": [{ bl: [127.485, 206.889], br: [129.367, 205.008], depth: 6 }]
+  };
+  // 建筑深度锚点覆盖：默认按 footprint 南缘（grid[1]+grid[3]）；带凹入台阶的建筑，
+  // 台阶是可走地面，锚点应落在南立面（门）而非台阶前缘，否则台阶上的角色会被 sprite 盖住。
+  const BUILDING_DEPTH = {
+    LIB: 149.4 * 1000 + 98.4,
+    "TEACH-2": 112.09 * 1000 + 80.39,
+    "LAB-TECH": 206.31 * 1000 + 128.78,
+    WENLI: 148.06 * 1000 + 146.89,
+    GYM: 282.62 * 1000 + 67.51
+  };
+  function inBuildingCutout(gx, gy, pad) {
+    for (const id in BUILDING_CUTOUTS) {
+      const b = D.buildings.find(x => x.id === id);
+      if (!b) continue;
+      const ccx = b.grid[0] + b.grid[2] / 2, ccy = b.grid[1] + b.grid[3] / 2;
+      for (const c of BUILDING_CUTOUTS[id]) {
+        const ax = c.bl[0], ay = c.bl[1], bx = c.br[0], by = c.br[1];
+        let ux = bx - ax, uy = by - ay; const L = Math.hypot(ux, uy); ux /= L; uy /= L;
+        let nx = -uy, ny = ux;
+        const mx = (ax + bx) / 2, my = (ay + by) / 2;
+        if (nx * (ccx - mx) + ny * (ccy - my) > 0) { nx = -nx; ny = -ny; } // 朝建筑中心则翻转
+        const dx = gx - ax, dy = gy - ay;
+        const t = dx * ux + dy * uy, s = dx * nx + dy * ny;
+        const tol = Math.max(pad || 0, 0.2);
+        if (t > -tol && t < L + tol && s > -tol && s < c.depth + tol) return true;
+      }
+    }
+    return false;
+  }
   // 由 sprite 像素点反算网格 y（zoom=1、原点 0 时的屏幕坐标）
   function spritePxToGrid(b, real, px, py) {
     const a = spriteAnchor(b, real);
@@ -1614,9 +1676,10 @@
 
   function blockedAt(gx, gy, pad) {
     if (gx < GX0 || gx > GX1 || gy < GY0 || gy > GY1) return true;
-    // #80 通行层权威：建筑（实体菱形+异形colliders+南墙）·草坪·水体在 navMask 涂黑，
-    // 道路·门前引道·穿堂连廊·操场内部为白。建筑碰撞已全部烘焙进通行层，单点判定即可。
-    if (!groundWalkable(gx, gy, pad)) return true;
+    // 凹入式门廊（cutout）放行：BFS 可走门廊
+    if (!inBuildingCutout(gx, gy, pad)) {
+      if (!groundWalkable(gx, gy, pad)) return true;
+    }
     for (const F of fences) if (fenceBlocked(gx, gy, F)) return true;
     for (const g of campusGates) {
       // 校门闭合时阻挡放大后视觉 footprint；收拢 open 后放行
@@ -1633,6 +1696,8 @@
   function buildingBlocked(gx, gy, pad) {
     if (gx < GX0 || gx > GX1 || gy < GY0 || gy > GY1) return true;
     const p = pad != null ? pad : MANUAL_PAD;
+    // 凹入式门廊（cutout）放行：即使点落在主 collider 矩形内，也可走
+    if (inBuildingCutout(gx, gy, 0.4)) return false;
     // 穿堂主干道（through）架空通道内放行，即使点落在主 collider 矩形内
     const through = onThroughRoad(gx, gy, 0.4);
     if (!through) {
@@ -1981,6 +2046,7 @@
         player.running = true; player.moving = true;
         const v = Math.min(speed * dt, dist);
         const moved = moveBy(ux, uy, v);
+        checkEnterBuilding(ux, uy);
         if (moved < v * 0.25) {
           navStuck++;
           // 脱困：轴分离无法后退/侧移，玩家陷入道路边缘的局部死角。
@@ -2232,9 +2298,15 @@
     gotoPoint: (gx, gy) => navigateToPoint(gx, gy),
     dbg: {
       blockedAt, buildingBlocked, bfs, nearestOpen, openSpotsAround, fences, buildingScale, visRect, clickRect,
-      spritePxToGrid: (b, real, px, py) => spritePxToGrid(b, real, px, py),
+      skipIntro: () => skipIntro(),
+      spritePxToGrid: (b, real, px, py) => {
+        const bb = typeof b === 'string' ? D.buildings.find(x => x.id === b) : b;
+        const rr = real || spriteImgs[bb.id];
+        return spritePxToGrid(bb, rr, px, py);
+      },
       gateState: () => campusGates.map(g => ({ id: g.id, open: g.open, cx: g.cx, cy: g.cy })),
       doorState: () => buildingDoors.map(d => ({ id: d.id, open: d.open, cx: d.cx, cy: d.cy })),
+      doorSpec: () => DOOR_SPEC,
       setDoorOpen(id, v) { const d = buildingDoors.find(x => x.id === id); if (d) d.open = v; },
       spriteInfo(id) {
         const b = D.buildings.find(x => x.id === id);
@@ -2407,96 +2479,82 @@
   function drawBuildingDoor(d) {
     const z = view.zoom;
     const open = d.open;
+    if (open <= 0.01) return;
     const H = d.H;
     const bl = d.bl, br = d.br;
     // 3D 点 (gx, gy, gz) -> 世界屏幕
-    const P3w = (gx, gy, gz) => ({
-      x: isoX(gx, gy),
-      y: isoY(gx, gy) - gz * DOOR_ZK
-    });
-    // 世界屏幕 -> 屏幕
-    const S = p => ({ x: w2sX(p.x), y: w2sY(p.y) });
-    // 关闭时直接用 sprite 自带的门
-    if (open <= 0.01) return;
-    // 门底中点（闭合时）
-    const mid = [(bl[0] + br[0]) / 2, (bl[1] + br[1]) / 2];
-    // 墙底方向（世界屏幕）
-    const blp = P3w(bl[0], bl[1], 0), brp = P3w(br[0], br[1], 0);
-    const wx = brp.x - blp.x, wy = brp.y - blp.y;
-    const wlen = Math.hypot(wx, wy);
-    // 墙单位（世界屏幕）
-    const ux = wx / wlen, uy = wy / wlen;
-    // 室内方向：垂直墙、朝建筑中心（世界屏幕）
+    const P3w = (gx, gy, gz) => ({ x: isoX(gx, gy), y: isoY(gx, gy) - gz * DOOR_ZK });
+    // 门宽方向（3D，单位）
+    let wux = br[0] - bl[0], wuy = br[1] - bl[1];
+    const wlen = Math.hypot(wux, wuy) || 1;
+    wux /= wlen; wuy /= wlen;
+    // 门里方向（3D 水平垂直门宽），朝建筑中心
     const bctr = d.b.grid;
-    const bcenter = P3w(bctr[0] + bctr[2] / 2, bctr[1] + bctr[3] / 2, 0);
-    const dcenter = P3w(mid[0], mid[1], 0);
-    const toCx = bcenter.x - dcenter.x, toCy = bcenter.y - dcenter.y;
-    // 两个垂直方向，选与朝建筑中心同向的
-    let ix = -uy, iy = ux;
-    if (ix * toCx + iy * toCy < 0) { ix = -ix; iy = -iy; }
-    // 门洞暗部（闭合门轮廓，竖直矩形）
-    const darkPts = [
-      S(P3w(bl[0], bl[1], 0)), S(P3w(br[0], br[1], 0)),
-      S(P3w(br[0], br[1], H)), S(P3w(bl[0], bl[1], H))
-    ];
-    ctx.globalAlpha = Math.min(1, open * 1.4);
-    ctx.beginPath();
-    darkPts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
-    ctx.closePath();
-    ctx.fillStyle = "#161a22"; ctx.fill();
+    const ccx = bctr[0] + bctr[2] / 2, ccy = bctr[1] + bctr[3] / 2;
+    const mcx = (bl[0] + br[0]) / 2, mcy = (bl[1] + br[1]) / 2;
+    let wvx = -wuy, wvy = wux;
+    if (wvx * (ccx - mcx) + wvy * (ccy - mcy) < 0) { wvx = -wvx; wvy = -wvy; }
+    const half = wlen / 2;
+    const theta = open * Math.PI / 2;
+    const co = Math.cos(theta), si = Math.sin(theta);
+    // 左扇自由边（3D 网格）：铰链 bl + half*(cos*门宽 + sin*门里)
+    const Lf = [bl[0] + half * (co * wux + si * wvx), bl[1] + half * (co * wuy + si * wvy)];
+    // 右扇自由边（3D）：铰链 br + half*(-cos*门宽 + sin*门里)
+    const Rf = [br[0] + half * (-co * wux + si * wvx), br[1] + half * (-co * wuy + si * wvy)];
+    // 面板四角（投影到世界屏幕）：铰链底/顶、自由底/顶
+    const Lp = { hb: P3w(bl[0], bl[1], 0), ht: P3w(bl[0], bl[1], H), fb: P3w(Lf[0], Lf[1], 0), ft: P3w(Lf[0], Lf[1], H) };
+    const Rp = { hb: P3w(br[0], br[1], 0), ht: P3w(br[0], br[1], H), fb: P3w(Rf[0], Rf[1], 0), ft: P3w(Rf[0], Rf[1], H) };
+    // 门洞四角（闭合时）
+    const BL = Lp.hb, BR = Rp.hb, TL = Lp.ht, TR = Rp.ht;
+
+    // ---- 门洞内的室内（真实室内贴图：木地板+书架），裁剪到门洞 ----
+    const S = p => ({ x: w2sX(p.x), y: w2sY(p.y) });
+    const poly = pts => {
+      ctx.beginPath();
+      pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+      ctx.closePath();
+    };
+    const inTex = spriteImgs[d.id + "_interior"];
+    ctx.save();
+    // 裁剪到门洞（只在门框开口处露出室内）
+    poly([S(TL), S(TR), S(BR), S(BL)]);
+    ctx.clip();
+    if (inTex) {
+      ctx.imageSmoothingEnabled = false;
+      // 映射：纹理(0,0)=TL, (w,0)=TR, (0,h)=BL, (w,h)=BR
+      const bx = { x: (TR.x - TL.x) / inTex.width, y: (TR.y - TL.y) / inTex.width };
+      const by = { x: (BL.x - TL.x) / inTex.height, y: (BL.y - TL.y) / inTex.height };
+      ctx.globalAlpha = Math.min(1, open * 1.4);
+      ctx.setTransform(bx.x * z, bx.y * z, by.x * z, by.y * z, w2sX(TL.x), w2sY(TL.y));
+      ctx.drawImage(inTex, 0, 0);
+    }
+    ctx.restore();
     ctx.globalAlpha = 1;
-    // 半宽（世界屏幕）
-    const halfLen = wlen / 2;
-    const ang = open * Math.PI / 2;
-    const ca = Math.cos(ang), sa = Math.sin(ang);
-    // 世界屏幕 -> 网格（地面，z=0）
-    const screenToGrid = (px, py) => ({
-      gx: (px / 32 + py / 16) / 2,
-      gy: (py / 16 - px / 32) / 2
-    });
-    // 画一扇门板（用裁剪纹理）
-    // side: 'L'=左门（铰链在左，纹理从左到右），'R'=右门（铰链在右）
-    const drawPanel = (side, hinge, closedDir) => {
-      const tex = side === 'L' ? spriteImgs[d.id + "_doorL"] : spriteImgs[d.id + "_doorR"];
+
+    // ---- 门板纹理（映射到面板四角）----
+    const mapPanel = (side, P) => {
+      const tex = spriteImgs[d.id + (side === 'L' ? "_doorL" : "_doorR")];
       if (!tex) return;
-      // 铰链底（世界屏幕）
-      const hb = P3w(hinge[0], hinge[1], 0);
-      // 自由端（世界屏幕）：闭合方向 + 室内方向
-      const fx = hb.x + halfLen * (ca * closedDir.x + sa * ix);
-      const fy = hb.y + halfLen * (ca * closedDir.y + sa * iy);
-      // 铰链顶
-      const ht = P3w(hinge[0], hinge[1], H);
-      // 自由端顶
-      const gfree = screenToGrid(fx, fy);
-      const ft = P3w(gfree.gx, gfree.gy, H);
-      // 纹理映射（世界屏幕）
-      let tx0, ty0, bx_x, bx_y, by_x, by_y;
+      // 左扇：纹理(0,0)=铰链顶，(w,0)=自由顶，(0,h)=铰链底
+      // 右扇：纹理(w,0)=铰链顶，(0,0)=自由顶，(w,h)=铰链底（doorR 已按右扇裁剪）
+      let o, bx, by;
       if (side === 'L') {
-        // 纹理左上=铰链顶，右上=自由端顶，左下=铰链底
-        tx0 = ht.x; ty0 = ht.y;
-        bx_x = (ft.x - ht.x) / tex.width; bx_y = (ft.y - ht.y) / tex.width;
-        by_x = (hb.x - ht.x) / tex.height; by_y = (hb.y - ht.y) / tex.height;
+        o = P.ht;
+        bx = { x: (P.ft.x - P.ht.x) / tex.width, y: (P.ft.y - P.ht.y) / tex.width };
+        by = { x: (P.hb.x - P.ht.x) / tex.height, y: (P.hb.y - P.ht.y) / tex.height };
       } else {
-        // 纹理右上=铰链顶，左上=自由端顶，右下=铰链底
-        tx0 = ft.x; ty0 = ft.y;
-        bx_x = (ht.x - ft.x) / tex.width; bx_y = (ht.y - ft.y) / tex.width;
-        by_x = (hb.x - ht.x) / tex.height; by_y = (hb.y - ht.y) / tex.height;
+        o = P.ft;
+        bx = { x: (P.ht.x - P.ft.x) / tex.width, y: (P.ht.y - P.ft.y) / tex.width };
+        by = { x: (P.fb.x - P.ft.x) / tex.height, y: (P.fb.y - P.ft.y) / tex.height };
       }
       ctx.save();
       ctx.imageSmoothingEnabled = false;
-      // 转到屏幕（含 zoom/平移）
-      ctx.setTransform(
-        bx_x * z, bx_y * z,
-        by_x * z, by_y * z,
-        w2sX(tx0), w2sY(ty0)
-      );
+      ctx.setTransform(bx.x * z, bx.y * z, by.x * z, by.y * z, w2sX(o.x), w2sY(o.y));
       ctx.drawImage(tex, 0, 0);
       ctx.restore();
     };
-    // 左门：铰链 bl，闭合方向朝右（墙单位）
-    drawPanel('L', bl, { x: ux, y: uy });
-    // 右门：铰链 br，闭合方向朝左（-墙单位）
-    drawPanel('R', br, { x: -ux, y: -uy });
+    mapPanel('L', Lp);
+    mapPanel('R', Rp);
   }
   function drawBuilding(b) {
     if (b._hidden) return;
@@ -2877,6 +2935,7 @@ function drawFences(F) {
       let depth;
       if (b.cat === "field") depth = (b.grid[1] - 2) * 1000 + (b.grid[0] + b.grid[2] / 2);
       else depth = (b.grid[1] + b.grid[3]) * 1000 + (b.grid[0] + b.grid[2]);
+      if (BUILDING_DEPTH[b.id] != null) depth = BUILDING_DEPTH[b.id];
       drawList.push({ kind: "b", depth, b });
     }
     for (const F of fences) drawList.push({ kind: "f", depth: (F.ccy + F.R) * 1000 + (F.ccx + F.R) + 1, F });
