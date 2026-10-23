@@ -584,7 +584,8 @@
     ...DOOR_IDS.map(id => Promise.all([
       loadImg("img/topdown/doors/" + id + "_L.png?av=v20").then(im => spriteImgs[id + "_doorL"] = im),
       loadImg("img/topdown/doors/" + id + "_R.png?av=v20").then(im => spriteImgs[id + "_doorR"] = im),
-      loadImg("img/topdown/doors/" + id + "_interior.png?av=v22").then(im => spriteImgs[id + "_interior"] = im).catch(() => null)
+      loadImg("img/topdown/doors/" + id + "_interior.png?av=v22").then(im => spriteImgs[id + "_interior"] = im).catch(() => null),
+      loadImg("img/topdown/sprites/" + id + "_nd.png?av=v23").then(im => spriteImgs[id + "_nd"] = im).catch(() => null)
     ])),
     ...["GATE-W", "GATE-E"].map(id =>
       Promise.all([
@@ -2479,7 +2480,6 @@
   function drawBuildingDoor(d) {
     const z = view.zoom;
     const open = d.open;
-    if (open <= 0.01) return;
     const H = d.H;
     const bl = d.bl, br = d.br;
     // 3D 点 (gx, gy, gz) -> 世界屏幕
@@ -2524,7 +2524,7 @@
       // 映射：纹理(0,0)=TL, (w,0)=TR, (0,h)=BL, (w,h)=BR
       const bx = { x: (TR.x - TL.x) / inTex.width, y: (TR.y - TL.y) / inTex.width };
       const by = { x: (BL.x - TL.x) / inTex.height, y: (BL.y - TL.y) / inTex.height };
-      ctx.globalAlpha = Math.min(1, open * 1.4);
+      ctx.globalAlpha = 1;
       ctx.setTransform(bx.x * z, bx.y * z, by.x * z, by.y * z, w2sX(TL.x), w2sY(TL.y));
       ctx.drawImage(inTex, 0, 0);
     }
@@ -2555,6 +2555,7 @@
     };
     mapPanel('L', Lp);
     mapPanel('R', Rp);
+    if (window.__capDoorGeom) window.__capDoorGeom(d.id, { Lp, Rp, TL, TR, BL, BR, wu: { x: wux, y: wuy }, wv: { x: wvx, y: wvy } });
   }
   function drawBuilding(b) {
     if (b._hidden) return;
@@ -2570,11 +2571,14 @@
       if (GATE_GEOM[b.id] && spriteImgs[b.id + "_towers"]) {
         drawGate(b, a, W, H, dx, dy);
       } else {
+        // 有门的建筑：画"门板挖空版"（原门位置透明，由 drawBuildingDoor 贴室内+门板）
+        const nd = spriteImgs[b.id + "_nd"];
+        const drawTex = (DOOR_SPEC[b.id] && nd) ? nd : real;
         ctx.imageSmoothingEnabled = false;   // NEAREST 硬像素
-        ctx.drawImage(real, dx, dy, W, H);
+        ctx.drawImage(drawTex, dx, dy, W, H);
         ctx.imageSmoothingEnabled = true;
       }
-      // 建筑门：门扇向内开合（画在 sprite 之上）
+      // 建筑门：门洞贴室内 + 门板向内开合（关门时门板盖住挖空，开门时露出室内）
       if (DOOR_SPEC[b.id]) {
         const d = buildingDoors.find(x => x.id === b.id);
         if (d) drawBuildingDoor(d);
