@@ -59,7 +59,7 @@ export const BUILDINGS: CampusBuilding[] = [
     "desc": "主校门西北侧跑道形（圆角矩形）大跨综合体育馆，长轴东偏北约45°，灰色大挑檐平顶+红砖方柱+朝东南蓝玻璃幕墙，含篮球/羽毛球/游泳等14个训练馆。",
     "collider": [46.22, 273.19, 23.8, 22.4],
     "colliders": null,
-    "entry": [72.4, 295.6]
+    "entry": [68.22, 283.32]
   },
   {
     "id": "TEACH-1",
@@ -111,7 +111,7 @@ export const BUILDINGS: CampusBuilding[] = [
     [101.03, 196, 11, 12.5],
     [115, 196, 17.5, 12.5]
   ],
-    "entry": [113, 207]
+    "entry": [129.49, 207.01]
   },
   {
     "id": "GATE-S",
@@ -174,7 +174,7 @@ export const BUILDINGS: CampusBuilding[] = [
     "desc": "约5万㎡，国家优质工程；连续折线单一体量（东侧百叶带与主体连体）+中央三角形玻璃采光中庭+弧形转角，红褐色横百叶+玻璃幕墙，临柳湖。",
     "collider": [80.91, 133.31, 17.5, 17.5],
     "colliders": null,
-    "entry": [100.8, 150.8]
+    "entry": [95.75, 149.94]
   },
   {
     "id": "WENLI",
@@ -195,7 +195,7 @@ export const BUILDINGS: CampusBuilding[] = [
     "desc": "周恺设计红砖围合院落（C形，朝西开口内院）4层，水平条窗+局部镂空砖格栅、东北退台，文理学科教学用房。",
     "collider": [125.38, 139.21, 20.3, 14.7],
     "colliders": null,
-    "entry": [145.7, 156.3]
+    "entry": [147.6, 148.77]
   },
   {
     "id": "TEACH-2",
@@ -216,7 +216,7 @@ export const BUILDINGS: CampusBuilding[] = [
     "desc": "柳湖东北侧红砖多体块围合院落群（约5-6体块、2-3内院+连廊，局部绿色屋顶，南门廊），承担本科课堂教学。",
     "collider": [61.73, 88.82, 21, 25.2],
     "colliders": null,
-    "entry": [85.1, 114]
+    "entry": [81.15, 112.75]
   },
   {
     "id": "ACT",
@@ -237,7 +237,7 @@ export const BUILDINGS: CampusBuilding[] = [
     "desc": "单一白色菱形穿孔表皮体量（两翼南连、北缘V形凹口），南檐口波浪下凹，白平顶+矩形天窗，含剧场/社团/展厅。",
     "collider": [19.32, 105.78, 28, 18.2],
     "colliders": null,
-    "entry": [47.3, 126.4]
+    "entry": [42.24, 126.14]
   },
   {
     "id": "CAN-YULAN",
@@ -258,7 +258,7 @@ export const BUILDINGS: CampusBuilding[] = [
     "desc": "红砖盒形交错层叠食堂，室外大台阶直通二层、二层架空挑檐白柱、上层一条蓝玻带，含玉兰一/二食堂。",
     "collider": [17.51, 82.08, 15.4, 12.6],
     "colliders": null,
-    "entry": [32.9, 97.1]
+    "entry": [25.84, 90.75]
   },
   {
     "id": "CAN-ZIZHU",
@@ -279,7 +279,7 @@ export const BUILDINGS: CampusBuilding[] = [
     "desc": "西门内粉色竖长楼体，北缘双塔楼（两凸体间凹口），含紫竹一~四食堂及民族食堂，约3900座；红砖立面+竖向长条窗。",
     "collider": [11.02, 137.85, 16.1, 13.3],
     "colliders": null,
-    "entry": [27.1, 153.6]
+    "entry": [22.37, 149.38]
   },
   {
     "id": "ENG-TRAIN",
@@ -300,7 +300,7 @@ export const BUILDINGS: CampusBuilding[] = [
     "desc": "东北侧工程训练中心『泰瑞楼』（泰瑞机器冠名捐赠），红棕+浅灰板立面、横向条窗，转角内凹二层高玻璃入口，工程实践教学场地。",
     "collider": [109.14, 39.73, 16.8, 19.6],
     "colliders": null,
-    "entry": [125.9, 61.7]
+    "entry": [119.85, 59.62]
   },
   {
     "id": "FIELD-N",
