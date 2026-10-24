@@ -1086,15 +1086,15 @@
   // 每栋门 = 左右铰链（门底，网格）+ 门高（网格），门扇纹理从 sprite 门裁剪（_L/_R）。
   // TEACH-1 为大拱门穿堂，不设门扇。
   const DOOR_SPEC = {
-    WENLI: { bl: [145.901, 148.515], br: [147.556, 146.861], H: 4.21 },
+    WENLI: { bl: [145.943, 148.748], br: [147.679, 147.011], H: 3.86 },
     LIB: { bl: [94.029, 149.535], br: [95.341, 148.222], H: 1.23 },
-    ACT: { bl: [40.504, 126.043], br: [42.760, 123.787], H: 2.17 },
-    "CAN-YULAN": { bl: [24.151, 89.789], br: [25.168, 88.772], H: 1.95 },
-    "CAN-ZIZHU": { bl: [21.925, 149.855], br: [22.970, 148.810], H: 2.16 },
-    GYM: { bl: [66.383, 287.658], br: [68.873, 285.167], H: 3.79 },
-    "TEACH-2": { bl: [79.784, 112.641], br: [81.914, 110.511], H: 2.53 },
-    "ENG-TRAIN": { bl: [118.857, 59.510], br: [120.194, 58.174], H: 3.04 },
-    "LAB-TECH": { bl: [128.026, 207.101], br: [130.378, 204.749], H: 3.72 }
+    ACT: { bl: [40.847, 125.555], br: [42.218, 124.184], H: 1.80 },
+    "CAN-YULAN": { bl: [23.987, 89.647], br: [24.797, 88.837], H: 1.62 },
+    "CAN-ZIZHU": { bl: [21.788, 149.396], br: [22.350, 148.833], H: 1.95 },
+    GYM: { bl: [65.607, 285.330], br: [66.762, 284.175], H: 1.34 },
+    "TEACH-2": { bl: [79.568, 112.352], br: [80.542, 111.378], H: 2.27 },
+    "ENG-TRAIN": { bl: [118.146, 59.141], br: [119.654, 57.633], H: 2.42 },
+    "LAB-TECH": { bl: [126.404, 205.808], br: [127.485, 204.726], H: 1.88 }
   };
   // 建筑可通行挖空区：凹入式门廊/门庭（building 被切出的矩形开口），从碰撞与 navMask 中放行。
   // 每条 cutout：{bl, br} 为门廊后墙（玻璃门所在）的两端，depth 为向外（背离建筑）的深度。
@@ -2558,8 +2558,36 @@
       ctx.drawImage(tex, 0, 0);
       ctx.restore();
     };
-    mapPanel('L', Lp);
-    mapPanel('R', Rp);
+    if (!window.__skipPanels) { mapPanel('L', Lp); mapPanel('R', Rp); }
+
+    // ---- 固定门楣/雨棚覆盖层（2D billboard，与 sprite 同位置同像素）----
+    // 门板自由边向里开后，其顶部（门顶在自由边处）因等距投影（门里=屏幕竖直，与竖直
+    // 高度 gz 共线）会出现在门顶上方；这部分物理上在门洞口内、gz≤H，须由其前方（更靠近
+    // 观察者）的固定门楣/雨棚遮挡。做法：从【原始 sprite】（未挖空）按 billboard 位置把
+    // "门顶上方、自由边扫过的固定区域"重画一遍——既遮挡自由边，又完整保留门楣横窗。
+    const realFB = spriteImgs[d.id];
+    if (realFB && !window.__skipPanels && !window.__skipLintel) {
+      const a = spriteAnchor(d.b, realFB);
+      const fW = a.pxW * z, fH = a.pxH * z;
+      const fdx = w2sX(a.x) - a.ax * fW, fdy = w2sY(a.y) - a.ay * fH;
+      // 屏幕点（实际屏幕）-> 精灵像素
+      const toPx = p => ({ x: (S(p).x - fdx) / fW * realFB.width, y: (S(p).y - fdy) / fH * realFB.height });
+      const pxTL = toPx(TL), pxTR = toPx(TR);
+      const pxfL = toPx(Lp.ft), pxfR = toPx(Rp.ft);
+      const sx0 = Math.floor(Math.min(pxTL.x, pxfL.x));
+      const sx1 = Math.ceil(Math.max(pxTR.x, pxfR.x));
+      const sy0 = Math.floor(Math.min(pxfL.y, pxfR.y));
+      const sy1 = Math.ceil(Math.max(pxTL.y, pxTR.y));   // 门顶（固定门楣下沿）
+      const dX = fdx + sx0 / realFB.width * fW;
+      const dY = fdy + sy0 / realFB.height * fH;
+      const dW = (sx1 - sx0) / realFB.width * fW;
+      const dH = (sy1 - sy0) / realFB.height * fH;
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(realFB, sx0, sy0, sx1 - sx0, sy1 - sy0, dX, dY, dW, dH);
+      ctx.restore();
+      if (window.__capOverlay) window.__capOverlay(d.id, { sx0, sy0, sx1, sy1, dX, dY, dW, dH, sc: a.sc, ax: a.ax, ay: a.ay, pxW: a.pxW, pxH: a.pxH, anchorX: a.x, anchorY: a.y });
+    }
     if (window.__capDoorGeom) window.__capDoorGeom(d.id, { Lp, Rp, TL, TR, BL, BR, wu: { x: wux, y: wuy }, wv: { x: wvx, y: wvy } });
   }
   function drawBuilding(b) {
