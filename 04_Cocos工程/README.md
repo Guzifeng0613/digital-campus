@@ -13,7 +13,7 @@
 ### 方法 B：拷进你自己的空 2D 项目（兜底，100% 可行）
 1. Dashboard 新建一个 **Empty（2D）** 项目。
 2. 把本工程 `assets/` 下的三个条目整体拷进新项目的 `assets/`：
-   - `assets/resources/`（ground.png + sprites/16 张）
+   - `assets/resources/`（ground.png + sprites/20 张 + player/36 帧）
    - `assets/scripts/`（CampusData.ts、IsoMath.ts、CampusBootstrap.ts）
 3. 打开新项目自带的 `assets/scenes/main.scene`（没有就 **文件 → 新建场景 Scene**，保存为 `assets/scenes/main.scene`）。
 
@@ -35,8 +35,9 @@
 - **小地图导航**：左下角全校缩略图，按分类彩色标注建筑、黄色脉冲点为角色、白色框为当前视野，并实时绘制寻路路线；点击小地图任意位置，主视角立即飞到该处。
 - **点位信息**：点击任意建筑，弹出面板，顶部展示该建筑的像素模型配图，下方为点位编号 / 名称 / 分类 / 简介；面板内有「前往这里」按钮。
 - **自动寻路**：点击信息卡的「前往这里」，或直接点击任意空地，像素小人会沿道路自动寻路（旋转坐标 BFS，避开实体建筑、不穿墙角），并显示虚线路径与终点标记；到达后提示；手动按 WASD 可立即取消。
-- **角色行走**：`W A S D` 或方向键控制 chibi 像素女孩（从南门进校）；教学楼、实验楼、体育馆、食堂、校门为实体碰撞（可贴墙），操场、玉屏山可进入；移动时相机自动跟随。
-- **按钮**：右上角“跟随角色 / 重置视角”。
+- **角色行走/跑步**：`W A S D` 或方向键控制 chibi 像素女孩（从南门进校），idle / walk / run 三套序列帧；教学楼、实验楼、体育馆、食堂、校门为实体碰撞（可贴墙），操场、玉屏山可进入；移动时相机自动跟随。
+- **校门自动开合**：东、西校门为固定门楼 + 伸缩门分体；角色靠近校门时伸缩门沿门洞方向平滑收起、离开后自动合拢，寻路与碰撞也会同步放行。
+- **按钮**：右上角“跑步开关 / 跟随角色 / 重置视角”。
 
 ### 预览自检（重要）
 
@@ -53,20 +54,20 @@
 ├── package.json / tsconfig.json
 └── assets/
     ├── resources/                 # 运行时按路径加载（不依赖 .meta UUID）
-    │   ├── ground.png             # 透明菱形真实路网底图（9130×4705）
-    │   └── sprites/               # 16 个点位透明底建筑图
+    │   ├── ground.png             # 菱形真实路网底图（10948×5474，含草地/道路/绿化/水体）
+    │   ├── sprites/               # 20 张：16 点位 + 东/西校门各 _towers/_bars 分体
+    │   └── player/                # 36 帧：4 方向 ×（idle + walk×4 + run×4）
     └── scripts/
-        ├── CampusData.ts          # 【自动生成】地面/投影/16 建筑网格、包围盒、深度、介绍
-        ├── IsoMath.ts             # 等距投影、坐标换算、碰撞、初始缩放
-        └── CampusBootstrap.ts     # 唯一入口：Canvas/相机/地图/角色/输入/信息UI
+        ├── CampusData.ts          # 【自动生成】地面/投影/16 建筑网格、碰撞、入口、介绍
+        ├── IsoMath.ts             # 等距投影、坐标换算、多部件碰撞、门开合几何、sprite 几何
+        └── CampusBootstrap.ts     # 唯一入口：Canvas/相机/地图/角色/门开合/输入/信息UI
 ```
 
 ## 五、数据与坐标
 
-- 数据由 `02_地图工程/build/gen_cocos.py` 从权威数据模型一键导出（`CampusData.ts`、`resources/`）。
-- 若后续调整了坐标或资产，在 `02_地图工程/build/` 下依次重跑：
-  `gen_map_data.py` → `export_web_assets.py` → `gen_cocos.py`，回到编辑器刷新即可。
-- 投影：网格 `(gx,gy)` → 屏幕 `((gx-gy)*22+OX, (gx+gy)*SY+OY)`，单位/常量见 `CampusData.ts` 的 `META`。
+- 数据由 `gen_cocos_data.js`（node）从权威 `03_地图预览器/js/data.js` 一键导出 `CampusData.ts`；地面 ground.png 由网页端 `exportGroundPNG()` 导出。
+- 若后续调整了坐标或资产，重跑 `gen_cocos_data.js` 并重新导出 ground.png，回到编辑器刷新即可。
+- 投影：网格 `(gx,gy)` → 图像 `((gx-gy)*32+OX, (gx+gy)*16+OY)`，单位/常量见 `CampusData.ts` 的 `META`。
 
 ## 六、常见问题
 

@@ -1,0 +1,48 @@
+name: 部署 GitHub Pages
+
+# 推送到 main 或手动触发时，把网页预览器部署到 GitHub Pages
+on:
+  push:
+    branches: [main]
+    paths:
+      - '03_地图预览器/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+# GITHUB_TOKEN 部署 Pages 所需权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时刻只保留一次部署
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 整理站点目录
+        run: |
+          cp -r '03_地图预览器' ./site
+          rm -rf ./site/screenshots    # 开发截图不需要上线
+
+      - name: 配置 Pages
+        uses: actions/configure-pages@v5
+
+      - name: 上传站点产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
