@@ -12,40 +12,14 @@
 
 <table>
   <tr>
-    <td align="center" width="50%"><b>校园全貌 · 正俯视</b><br><sub>16 点位 + 11 条真实道路，山体 / 水系 / 草坪按真实位置排布</sub></td>
-    <td align="center" width="50%"><b>点位信息卡</b><br><sub>编号 / 名称 / 分类 / 简介 + 立体像素配图，一键「前往这里」</sub></td>
+    <td align="center" width="50%"><b>校园全景 · 等距 2.5D</b><br><sub>红砖与浅白教学楼沿菱形道路、水系排布，山体与绿化环绕，深蓝留白背景</sub></td>
+    <td align="center" width="50%"><b>点位信息卡 · 第二教学楼</b><br><sub>编号 / 名称 / 分类 / 简介 + 等距立体像素配图，含「进入建筑 / 前往这里」操作</sub></td>
   </tr>
   <tr>
-    <td><img src="03_地图预览器/screenshots_td/final4_01_overview.png" alt="校园全貌正俯视" width="100%"/></td>
-    <td><img src="03_地图预览器/screenshots_td/final4_15_info.png" alt="点位信息卡" width="100%"/></td>
-  </tr>
-  <tr>
-    <td align="center"><b>第一教学楼 · 马蹄形特写</b><br><sub>U 形主楼 + 弧形翼 + 空中连廊，放大后顶部显示名称标签</sub></td>
-    <td align="center"><b>实验楼群 · 方形合院</b><br><sub>按官方平面图重做为 2×2 口字合院，严格贴地块</sub></td>
-  </tr>
-  <tr>
-    <td><img src="03_地图预览器/screenshots_td/final4_02_teach1.png" alt="第一教学楼特写" width="100%"/></td>
-    <td><img src="03_地图预览器/screenshots_td/final4_09_labtech.png" alt="实验楼群合院" width="100%"/></td>
-  </tr>
-  <tr>
-    <td align="center"><b>南门（主校门）</b><br><sub>校名石碑 + 花坛灯杆，南门敞开式中轴入场</sub></td>
-    <td align="center"><b>北操场 · 围栏唯一入口</b><br><sub>红跑道 + 足球场四周围栏，仅一门可进，旁为玉屏山</sub></td>
-  </tr>
-  <tr>
-    <td><img src="03_地图预览器/screenshots_td/final4_12_gatesouth.png" alt="南门主校门" width="100%"/></td>
-    <td><img src="03_地图预览器/screenshots_td/final4_13_fieldn.png" alt="北操场围栏入口" width="100%"/></td>
-  </tr>
-  <tr>
-    <td align="center"><b>移动端竖屏 · 虚拟摇杆</b><br><sub>标题 / 按钮 / 信息卡自适应重排，右下摇杆推满即跑</sub></td>
-    <td align="center"><b>初代等距 2.5D（v1 存档）</b><br><sub>菱形投影 + 红砖建筑，资产保留于 img/sprites，Cocos 工程沿用</sub></td>
-  </tr>
-  <tr>
-    <td><img src="03_地图预览器/screenshots_td/final4_16_mobile.png" alt="移动端竖屏与摇杆" width="100%"/></td>
-    <td><img src="03_地图预览器/screenshots/01_全貌.png" alt="初代等距2.5D全貌" width="100%"/></td>
+    <td><img src="docs/images/campus-overview.png" alt="校园全景等距2.5D" width="100%"/></td>
+    <td><img src="docs/images/teach2-info-card.png" alt="第二教学楼点位信息卡" width="100%"/></td>
   </tr>
 </table>
-
-> 更多分阶段实景 / 官方图对比见 `03_地图预览器/screenshots_td/`（含 `shape_official_vs_scene/`、`roads_beforeafter/`、`scale_beforeafter/` 等校准对照），等距版截图见 `03_地图预览器/screenshots/`。
 
 ---
 
@@ -164,7 +138,7 @@ digital-campus/
 │   └── screenshots_td/     # 俯视 v2 截图与实景对比
 ├── 04_Cocos工程/           # Cocos Creator 3.8：resources/ + scripts/ + 接入 README
 ├── 05_文档/                # 像素插图提示词手册、PR 说明、线上验证截图
-├── docs/                   # topdown 渲染契约、worktree 分支拓扑
+├── docs/                   # topdown 渲染契约、worktree 分支拓扑、images/（README 配图）
 ├── .github/workflows/deploy.yml
 ├── *.zip                   # 三个特定版本打包快照（以目录源码与 CHANGELOG 为准）
 ├── CHANGELOG.md
